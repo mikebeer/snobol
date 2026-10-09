@@ -18,6 +18,8 @@ minute) and afterwards starts in well under a second. Set `CREXX` to the
 
 Data lines placed after the `END` statement are read by `INPUT` before stdin.
 
+The manual is in [`docs/SNOBOL-CREXX-Guide.pdf`](docs/SNOBOL-CREXX-Guide.pdf) (Word version: [`docs/SNOBOL-CREXX-Guide.docx`](docs/SNOBOL-CREXX-Guide.docx)).
+
 ## What is supported
 
 * **Statements**: labels, `;` separators, `+`/`.` continuation lines, `*` comments,
@@ -56,5 +58,6 @@ Errors are fatal and reported on stderr with the statement number, unless
 | `snobol` | launcher script |
 | `examples/` | sample programs |
 | `tests/` | regression tests: `tests/run_tests.sh` |
+| `docs/` | the manual (Word and PDF) |
 
 Rebuild after editing `src/`: `python3 build.py`.
