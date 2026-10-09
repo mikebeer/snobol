@@ -1,0 +1,689 @@
+
+/* ---------------------------------------------------------------------
+   Value registers
+   --------------------------------------------------------------------- */
+setnull: procedure = .void
+  rt = 0
+  rs = ""
+  return
+
+setstr: procedure = .void
+  arg s = .string
+  rt = 0
+  rs = s
+  return
+
+setint: procedure = .void
+  arg i = .int
+  rt = 1
+  ri = i
+  return
+
+setreal: procedure = .void
+  arg x = .float
+  rt = 2
+  rr = x
+  return
+
+setobj: procedure = .void
+  arg t = .int, i = .int
+  rt = t
+  ri = i
+  return
+
+where_am_i: procedure = .string
+  if cur_st > 0 then return "statement " || cur_st || " (line " || st_line[cur_st] || ")"
+  return "program"
+
+snerr: procedure = .void
+  arg code = .int, msg = .string
+  rcx = .int
+  emsg = .string
+  fail = 1
+  if kw_errlimit > 0 then do
+    kw_errlimit = kw_errlimit - 1
+    kw_errtype = code
+    err_code = code
+    err_msg = msg
+    return
+  end
+  if err_flag = 0 then do
+    err_flag = 1
+    err_code = code
+    err_msg = msg
+    assembler fflush rcx, h_out
+    emsg = "snobol: error " || code || " at " || where_am_i() || ": " || msg || '0a'x
+    assembler fwrite h_err, emsg
+    assembler fflush rcx, h_err
+  end
+  halted = 1
+  rc_exit = 1
+  return
+
+fmtreal: procedure = .string
+  arg x = .float
+  s = .string
+  p = .int
+  if x \= x then return "nan"
+  s = x as .string
+  s = translate(s, "E", "e")
+  p = pos("E", s)
+  if p = 0 then do
+    if pos(".", s) = 0 then s = s || "."
+  end
+  else do
+    if pos(".", left(s, p - 1)) = 0 then s = left(s, p - 1) || "." || substr(s, p)
+  end
+  return s
+
+/* string -> number.  returns 0 (not a number), 1 (integer), 2 (real);
+   the value is left in nv_i / nv_r */
+str2num: procedure = .int
+  arg s0 = .string
+  s = .string
+  n = .int
+  p = .int
+  q = .int
+  q2 = .int
+  q3 = .int
+  e = .int
+  nd = .int
+  isreal = .int
+  neg = .int
+  body = .string
+  c = .string
+  s = strip(s0)
+  n = length(s)
+  nv_i = 0
+  if n = 0 then return 1
+  p = 1
+  neg = 0
+  c = substr(s, 1, 1)
+  if c == "+" | c == "-" then do
+    p = 2
+    if c == "-" then neg = 1
+  end
+  q = verify(s, "0123456789", "N", p)
+  if q = 0 then q = n + 1
+  nd = q - p
+  isreal = 0
+  if q <= n & substr(s, q, 1) == "." then do
+    isreal = 1
+    q2 = verify(s, "0123456789", "N", q + 1)
+    if q2 = 0 then q2 = n + 1
+    nd = nd + (q2 - q - 1)
+    q = q2
+  end
+  if nd = 0 then return 0
+  if q <= n & (substr(s, q, 1) == "e" | substr(s, q, 1) == "E") then do
+    isreal = 1
+    e = q + 1
+    if e <= n & (substr(s, e, 1) == "+" | substr(s, e, 1) == "-") then e = e + 1
+    q3 = verify(s, "0123456789", "N", e)
+    if q3 = 0 then q3 = n + 1
+    if q3 = e then return 0
+    q = q3
+  end
+  if q <= n then return 0
+  body = substr(s, p)
+  if isreal = 0 & nd > 18 then isreal = 1
+  if isreal = 1 then do
+    nv_r = numtofloat(body)
+    if neg = 1 then nv_r = 0.0 - nv_r
+    return 2
+  end
+  nv_i = body as .int
+  if neg = 1 then nv_i = 0 - nv_i
+  return 1
+
+/* current register value as a string */
+rstr: procedure = .string
+  select
+    when rt = 0 then return rs
+    when rt = 1 then return ri as .string
+    when rt = 2 then return fmtreal(rr)
+    otherwise nop
+  end
+  return ""
+
+dtype: procedure = .string
+  select
+    when rt = 0 then return "STRING"
+    when rt = 1 then return "INTEGER"
+    when rt = 2 then return "REAL"
+    when rt = 3 then return "PATTERN"
+    when rt = 4 then return "ARRAY"
+    when rt = 5 then return "TABLE"
+    when rt = 6 then return "NAME"
+    when rt = 7 then return "CODE"
+    when rt = 8 then return "EXPRESSION"
+    when rt = 9 then return ty_name[ob_ty[ri]]
+    otherwise nop
+  end
+  return "STRING"
+
+/* convert the registers to a number (rt = 1 or 2); error otherwise */
+tonum: procedure = .void
+  k = .int
+  if rt = 1 | rt = 2 then return
+  if rt = 0 then do
+    k = str2num(rs)
+    if k = 1 then do
+      rt = 1
+      ri = nv_i
+      return
+    end
+    if k = 2 then do
+      rt = 2
+      rr = nv_r
+      return
+    end
+  end
+  call snerr 1, "Illegal data type"
+  return
+
+/* convert to integer (real values must be integral) */
+toint0: procedure = .int
+  k = .int
+  call tonum
+  if fail = 1 then return 0
+  if rt = 2 then do
+    if rr \= rxfloat..trunc(rr) then do
+      call snerr 1, "Illegal data type"
+      return 0
+    end
+    return rr as .int
+  end
+  return ri
+
+/* ---------------------------------------------------------------------
+   Argument stack
+   --------------------------------------------------------------------- */
+push_reg: procedure = .void
+  ab_cnt = ab_cnt + 1
+  ab_t[ab_cnt] = rt
+  ab_s[ab_cnt] = rs
+  ab_i[ab_cnt] = ri
+  ab_r[ab_cnt] = rr
+  return
+
+ld: procedure = .void
+  arg k = .int
+  rt = ab_t[k]
+  rs = ab_s[k]
+  ri = ab_i[k]
+  rr = ab_r[k]
+  return
+
+ab_str: procedure = .string
+  arg k = .int
+  call ld k
+  return rstr()
+
+ab_int: procedure = .int
+  arg k = .int
+  call ld k
+  return toint0()
+
+ident_ab: procedure = .int
+  arg a = .int, b = .int
+  if ab_t[a] \= ab_t[b] then return 0
+  select
+    when ab_t[a] = 0 then do
+      if ab_s[a] == ab_s[b] then return 1
+      return 0
+    end
+    when ab_t[a] = 2 then do
+      if ab_r[a] = ab_r[b] then return 1
+      return 0
+    end
+    otherwise do
+      if ab_i[a] = ab_i[b] then return 1
+      return 0
+    end
+  end
+  return 0
+
+/* ---------------------------------------------------------------------
+   Output / input
+   --------------------------------------------------------------------- */
+flush_out: procedure = .void
+  rcx = .int
+  assembler fflush rcx, h_out
+  return
+
+put_line: procedure = .void
+  arg u = .int, txt = .string
+  h = .int
+  rcx = .int
+  line = .string
+  if u < 0 | u > 255 then return
+  h = ou_h[u]
+  if ou_m[u] \= 2 | h = 0 then do
+    call snerr 2, "Output channel not open"
+    return
+  end
+  line = txt || '0a'x
+  assembler fwrite h, line
+  if u = 7 then do
+    assembler fflush rcx, h
+  end
+  return
+
+/* read one line from unit u into rs; returns 1 on success, 0 at EOF */
+get_line: procedure = .int
+  arg u = .int
+  h = .int
+  e = .int
+  line = .string
+  if u = 5 & inq_p <= inq_n then do
+    rs = inq[inq_p]
+    inq_p = inq_p + 1
+    rt = 0
+    return 1
+  end
+  if u < 0 | u > 255 then return 0
+  if ou_m[u] \= 1 | ou_e[u] = 1 then return 0
+  h = ou_h[u]
+  line = ""
+  assembler freadline line, h
+  assembler feof e, h
+  if e > 0 & length(line) = 0 then do
+    ou_e[u] = 1
+    return 0
+  end
+  if right(line, 1) == '0d'x then line = left(line, length(line) - 1)
+  rt = 0
+  rs = line
+  return 1
+
+/* ---------------------------------------------------------------------
+   Variables, keywords
+   --------------------------------------------------------------------- */
+getvar: procedure = .void
+  arg s = .int
+  if vfl[s] = 2 then do
+    if get_line(v_unit[s]) = 0 then fail = 1
+    return
+  end
+  rt = vt[s]
+  rs = vs[s]
+  ri = vi[s]
+  rr = vr[s]
+  return
+
+setvar: procedure = .void
+  arg s = .int
+  vt[s] = rt
+  vs[s] = rs
+  vi[s] = ri
+  vr[s] = rr
+  if vfl[s] = 1 then call put_line v_unit[s], rstr()
+  return
+
+getkw: procedure = .void
+  arg k = .int
+  select
+    when k = KW_ANCHOR then call setint kw_anchor
+    when k = KW_TRIM then call setint kw_trim
+    when k = KW_FULLSCAN then call setint kw_fullscan
+    when k = KW_ERRLIMIT then call setint kw_errlimit
+    when k = KW_ERRTYPE then call setint kw_errtype
+    when k = KW_STCOUNT then call setint kw_stcount
+    when k = KW_STLIMIT then call setint kw_stlimit
+    when k = KW_STNO then call setint cur_st
+    when k = KW_ALPHABET then call setstr alphabet()
+    when k = KW_LCASE then call setstr "abcdefghijklmnopqrstuvwxyz"
+    when k = KW_UCASE then call setstr "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    when k = KW_MAXLNGTH then call setint kw_maxlngth
+    when k = KW_FNCLEVEL then call setint depth
+    when k = KW_LASTNO then call setint kw_lastno
+    when k = KW_TRACE then call setint kw_trace
+    when k = KW_FTRACE then call setint kw_ftrace
+    when k = KW_INPUT then call setint 1
+    when k = KW_OUTPUT then call setint 1
+    when k = KW_DIGITS then call setint 15
+    when k = KW_CODE then call setint kw_code
+    when k = KW_ABORT then call setint 0
+    otherwise call setnull
+  end
+  return
+
+alphabet: procedure = .string
+  s = .string
+  i = .int
+  s = ""
+  do i = 0 to 255
+    s = s || d2c(i)
+  end
+  return s
+
+setkw: procedure = .void
+  arg k = .int
+  n = .int
+  n = toint0()
+  if fail = 1 then return
+  select
+    when k = KW_ANCHOR then kw_anchor = n
+    when k = KW_TRIM then kw_trim = n
+    when k = KW_FULLSCAN then kw_fullscan = n
+    when k = KW_ERRLIMIT then kw_errlimit = n
+    when k = KW_ERRTYPE then kw_errtype = n
+    when k = KW_STCOUNT then kw_stcount = n
+    when k = KW_STLIMIT then kw_stlimit = n
+    when k = KW_MAXLNGTH then kw_maxlngth = n
+    when k = KW_TRACE then kw_trace = n
+    when k = KW_FTRACE then kw_ftrace = n
+    when k = KW_CODE then kw_code = n
+    otherwise call snerr 3, "Erroneous assignment to keyword"
+  end
+  return
+
+/* ---------------------------------------------------------------------
+   Names
+   --------------------------------------------------------------------- */
+mkname: procedure = .int
+  arg k = .int, a = .int
+  nnm = nnm + 1
+  nm_k[nnm] = k
+  nm_a[nnm] = a
+  return nnm
+
+/* fetch the value designated by a name (kind k, arg a) */
+fetch_nm: procedure = .void
+  arg k = .int, a = .int
+  select
+    when k = NM_VAR then call getvar a
+    when k = NM_ELEM then call el_get a
+    when k = NM_KW then call getkw a
+    otherwise nop
+  end
+  return
+
+store_nm: procedure = .void
+  arg k = .int, a = .int
+  select
+    when k = NM_VAR then call setvar a
+    when k = NM_ELEM then call el_set a
+    when k = NM_KW then call setkw a
+    otherwise nop
+  end
+  return
+
+/* ---------------------------------------------------------------------
+   Element pool
+   --------------------------------------------------------------------- */
+newelem: procedure = .int
+  ne = ne + 1
+  et[ne] = 0
+  es[ne] = ""
+  ei[ne] = 0
+  er[ne] = 0.0
+  ek[ne] = ""
+  enx[ne] = 0
+  return ne
+
+el_get: procedure = .void
+  arg x = .int
+  rt = et[x]
+  rs = es[x]
+  ri = ei[x]
+  rr = er[x]
+  return
+
+el_set: procedure = .void
+  arg x = .int
+  et[x] = rt
+  es[x] = rs
+  ei[x] = ri
+  er[x] = rr
+  return
+
+/* ---------------------------------------------------------------------
+   Arrays
+   --------------------------------------------------------------------- */
+make_array: procedure = .int
+  arg proto = .string, it = .int, iss = .string, ii = .int, ir = .float
+  nd = .int
+  rest = .string
+  part = .string
+  p = .int
+  c = .int
+  lo = .int
+  hi = .int
+  k = .int
+  tot = .int
+  b = .int
+  x = .int
+  q = .int
+  tmp_lo = .int[]
+  tmp_hi = .int[]
+  rest = strip(proto)
+  nd = 0
+  tot = 1
+  do forever
+    p = pos(",", rest)
+    if p = 0 then do
+      part = strip(rest)
+      rest = ""
+    end
+    else do
+      part = strip(left(rest, p - 1))
+      rest = substr(rest, p + 1)
+    end
+    q = pos(":", part)
+    if q > 0 then do
+      if str2num(left(part, q - 1)) \= 1 then do
+        call snerr 8, "Illegal array bound"
+        return 0
+      end
+      lo = nv_i
+      if str2num(substr(part, q + 1)) \= 1 then do
+        call snerr 8, "Illegal array bound"
+        return 0
+      end
+      hi = nv_i
+    end
+    else do
+      if str2num(part) \= 1 then do
+        call snerr 8, "Illegal array bound"
+        return 0
+      end
+      lo = 1
+      hi = nv_i
+    end
+    if hi < lo then do
+      call snerr 8, "Illegal array bound"
+      return 0
+    end
+    nd = nd + 1
+    tmp_lo[nd] = lo
+    tmp_hi[nd] = hi
+    tot = tot * (hi - lo + 1)
+    if tot > 20000000 then do
+      call snerr 8, "Array too large"
+      return 0
+    end
+    if rest == "" & p = 0 then leave
+    if p = 0 then leave
+  end
+  nar = nar + 1
+  ar_nd[nar] = nd
+  ar_d0[nar] = ndm + 1
+  do k = 1 to nd
+    ndm = ndm + 1
+    dm_lo[ndm] = tmp_lo[k]
+    dm_hi[ndm] = tmp_hi[k]
+  end
+  ar_proto[nar] = proto
+  ar_base[nar] = ne + 1
+  do k = 1 to tot
+    ne = ne + 1
+    et[ne] = it
+    es[ne] = iss
+    ei[ne] = ii
+    er[ne] = ir
+    ek[ne] = ""
+    enx[ne] = 0
+  end
+  return nar
+
+/* pool index of element addressed by ab[base+1 .. base+na], 0 if out of range */
+arr_elem: procedure = .int
+  arg aid = .int, base = .int, na = .int
+  d = .int
+  idx = .int
+  stride = .int
+  off = .int
+  v = .int
+  d0 = .int
+  lo = .int
+  hi = .int
+  if na \= ar_nd[aid] then return 0
+  d0 = ar_d0[aid]
+  off = 0
+  do d = 1 to na
+    v = ab_int(base + d)
+    if fail = 1 then return 0
+    lo = dm_lo[d0 + d - 1]
+    hi = dm_hi[d0 + d - 1]
+    if v < lo | v > hi then return 0
+    off = off * (hi - lo + 1) + (v - lo)
+  end
+  return ar_base[aid] + off
+
+arr_size: procedure = .int
+  arg aid = .int
+  d = .int
+  t = .int
+  t = 1
+  do d = 1 to ar_nd[aid]
+    t = t * (dm_hi[ar_d0[aid] + d - 1] - dm_lo[ar_d0[aid] + d - 1] + 1)
+  end
+  return t
+
+/* ---------------------------------------------------------------------
+   Tables
+   --------------------------------------------------------------------- */
+keytext: procedure = .string
+  select
+    when rt = 0 then return "S" || rs
+    when rt = 1 then return "I" || ri
+    when rt = 2 then return "R" || fmtreal(rr)
+    when rt = 3 then return "P" || ri
+    when rt = 4 then return "A" || ri
+    when rt = 5 then return "T" || ri
+    when rt = 6 then return "N" || nm_k[ri] || ":" || nm_a[ri]
+    when rt = 9 then return "D" || ri
+    otherwise nop
+  end
+  return "X" || ri
+
+make_table: procedure = .int
+  ntb = ntb + 1
+  tb_head[ntb] = 0
+  tb_n[ntb] = 0
+  return ntb
+
+/* find (or create) the element for the key in the registers; 0 if absent */
+tbl_find: procedure = .int
+  arg tid = .int, create = .int
+  k = .string
+  v = .string
+  x = .int
+  k = tid || "|" || keytext()
+  v = tb_map[k]
+  if v \== "" then return v as .int
+  if create = 0 then return 0
+  x = newelem()
+  ek[x] = keytext()
+  enx[x] = tb_head[tid]
+  tb_head[tid] = x
+  tb_n[tid] = tb_n[tid] + 1
+  tb_map[k] = x
+  return x
+
+/* load the key stored with a table element into the registers */
+key_load: procedure = .void
+  arg x = .int
+  k = .string
+  c = .string
+  b = .string
+  q = .int
+  k = ek[x]
+  c = left(k, 1)
+  b = substr(k, 2)
+  select
+    when c == "S" then call setstr b
+    when c == "I" then call setint b as .int
+    when c == "R" then do
+      rt = 2
+      rr = numtofloat(b)
+    end
+    when c == "P" then call setobj 3, b as .int
+    when c == "A" then call setobj 4, b as .int
+    when c == "T" then call setobj 5, b as .int
+    when c == "D" then call setobj 9, b as .int
+    when c == "N" then do
+      q = pos(":", b)
+      call setobj 6, mkname(left(b, q - 1) as .int, substr(b, q + 1) as .int)
+    end
+    otherwise call setnull
+  end
+  return
+
+/* ---------------------------------------------------------------------
+   Data types
+   --------------------------------------------------------------------- */
+define_data: procedure = .void
+  arg spec = .string
+  p = .int
+  q = .int
+  nme = .string
+  rest = .string
+  f = .string
+  t = .int
+  n = .int
+  p = pos("(", spec)
+  q = lastpos(")", spec)
+  if p = 0 | q < p then do
+    call snerr 8, "Bad DATA prototype"
+    return
+  end
+  nme = strip(left(spec, p - 1))
+  if fold = 1 then nme = upper(nme)
+  rest = substr(spec, p + 1, q - p - 1)
+  nty = nty + 1
+  t = nty
+  ty_name[t] = nme
+  ty_f0[t] = nflds + 1
+  n = 0
+  do forever
+    p = pos(",", rest)
+    if p = 0 then do
+      f = strip(rest)
+      rest = ""
+    end
+    else do
+      f = strip(left(rest, p - 1))
+      rest = substr(rest, p + 1)
+    end
+    if fold = 1 then f = upper(f)
+    n = n + 1
+    nflds = nflds + 1
+    ty_fld[nflds] = f
+    fldmap[f] = "1"
+    if p = 0 then leave
+  end
+  ty_nf[t] = n
+  tymap[nme] = t
+  return
+
+/* index of field named f within type t (0 if none) */
+field_index: procedure = .int
+  arg t = .int, f = .string
+  i = .int
+  do i = 1 to ty_nf[t]
+    if ty_fld[ty_f0[t] + i - 1] == f then return i
+  end
+  return 0

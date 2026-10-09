@@ -1,0 +1,847 @@
+
+/* ---------------------------------------------------------------------
+   Builtin helpers
+   --------------------------------------------------------------------- */
+sarg: procedure = .string
+  arg base = .int, k = .int
+  return ab_str(base + k)
+
+iarg: procedure = .int
+  arg base = .int, k = .int
+  return ab_int(base + k)
+
+numcmp: procedure = .int
+  arg a = .int, b = .int
+  at = .int
+  ai = .int
+  ar = .float
+  x = .float
+  y = .float
+  call ld a
+  call tonum
+  if fail = 1 then return 0
+  at = rt
+  ai = ri
+  ar = rr
+  call ld b
+  call tonum
+  if fail = 1 then return 0
+  if at = 1 & rt = 1 then do
+    if ai < ri then return -1
+    if ai > ri then return 1
+    return 0
+  end
+  if at = 1 then x = ai as .float
+  else x = ar
+  if rt = 1 then y = ri as .float
+  else y = rr
+  if x < y then return -1
+  if x > y then return 1
+  return 0
+
+strcmp0: procedure = .int
+  arg a = .string, b = .string
+  if a == b then return 0
+  if a << b then return -1
+  return 1
+
+/* compare two sort keys held in srt_* (numbers before strings) */
+srt_cmp: procedure = .int
+  arg a = .int, b = .int
+  x = .float
+  y = .float
+  if srt_t[a] = 0 & srt_t[b] = 0 then return strcmp0(srt_s[a], srt_s[b])
+  if srt_t[a] = 0 then return 1
+  if srt_t[b] = 0 then return -1
+  if srt_t[a] = 1 then x = srt_i[a] as .float
+  else x = srt_r[a]
+  if srt_t[b] = 1 then y = srt_i[b] as .float
+  else y = srt_r[b]
+  if x < y then return -1
+  if x > y then return 1
+  return 0
+
+/* sort perm srt_p[1..n] by srt_* keys (insertion/merge hybrid: simple shell sort) */
+srt_sort: procedure = .void
+  arg n = .int, desc = .int
+  gap = .int
+  i = .int
+  j = .int
+  tmp = .int
+  ok = .int
+  do i = 1 to n
+    srt_p[i] = i
+  end
+  gap = n % 2
+  do while gap > 0
+    do i = gap + 1 to n
+      tmp = srt_p[i]
+      j = i
+      ok = 1
+      do while ok = 1 & j > gap
+        if desc = 0 then ok = srt_cmp(srt_p[j - gap], tmp) > 0
+        else ok = srt_cmp(srt_p[j - gap], tmp) < 0
+        if ok = 1 then do
+          srt_p[j] = srt_p[j - gap]
+          j = j - gap
+        end
+      end
+      srt_p[j] = tmp
+    end
+    if gap = 1 then gap = 0
+    else do
+      gap = gap * 5 % 11
+      if gap < 1 then gap = 1
+    end
+  end
+  return
+
+copy_val: procedure = .void
+  /* registers hold a value; replace by a copy (arrays/tables/objects) */
+  t = .int
+  aid = .int
+  na = .int
+  tot = .int
+  b = .int
+  i = .int
+  x = .int
+  tid = .int
+  o = .int
+  e = .int
+  t = rt
+  if t = 4 then do
+    aid = ri
+    tot = arr_size(aid)
+    nar = nar + 1
+    ar_nd[nar] = ar_nd[aid]
+    ar_d0[nar] = ar_d0[aid]
+    ar_proto[nar] = ar_proto[aid]
+    ar_base[nar] = ne + 1
+    b = ar_base[aid]
+    do i = 0 to tot - 1
+      ne = ne + 1
+      et[ne] = et[b + i]
+      es[ne] = es[b + i]
+      ei[ne] = ei[b + i]
+      er[ne] = er[b + i]
+      ek[ne] = ""
+      enx[ne] = 0
+    end
+    call setobj 4, nar
+  end
+  else if t = 5 then do
+    tid = ri
+    o = make_table()
+    e = tb_head[tid]
+    na = 0
+    do while e > 0
+      na = na + 1
+      srt_v[na] = e
+      e = enx[e]
+    end
+    do i = na to 1 by -1
+      e = srt_v[i]
+      call key_load e
+      x = tbl_find(o, 1)
+      et[x] = et[e]
+      es[x] = es[e]
+      ei[x] = ei[e]
+      er[x] = er[e]
+    end
+    call setobj 5, o
+  end
+  else if t = 9 then do
+    o = ri
+    nob = nob + 1
+    ob_ty[nob] = ob_ty[o]
+    ob_base[nob] = ne + 1
+    do i = 0 to ty_nf[ob_ty[o]] - 1
+      ne = ne + 1
+      et[ne] = et[ob_base[o] + i]
+      es[ne] = es[ob_base[o] + i]
+      ei[ne] = ei[ob_base[o] + i]
+      er[ne] = er[ob_base[o] + i]
+      ek[ne] = ""
+      enx[ne] = 0
+    end
+    call setobj 9, nob
+  end
+  return
+
+/* table -> srt_v list of elements in insertion order; returns count */
+table_list: procedure = .int
+  arg tid = .int
+  e = .int
+  n = .int
+  i = .int
+  j = .int
+  tmp = .int
+  e = tb_head[tid]
+  n = 0
+  do while e > 0
+    n = n + 1
+    srt_v[n] = e
+    e = enx[e]
+  end
+  i = 1
+  j = n
+  do while i < j
+    tmp = srt_v[i]
+    srt_v[i] = srt_v[j]
+    srt_v[j] = tmp
+    i = i + 1
+    j = j - 1
+  end
+  return n
+
+do_sort: procedure = .void
+  arg desc = .int, base = .int
+  tid = .int
+  aid = .int
+  n = .int
+  i = .int
+  e = .int
+  r = .int
+  b = .int
+  tot = .int
+  call ld base + 1
+  if rt = 5 then do
+    tid = ri
+    n = table_list(tid)
+    do i = 1 to n
+      e = srt_v[i]
+      call key_load e
+      srt_t[i] = rt
+      srt_s[i] = rs
+      srt_i[i] = ri
+      srt_r[i] = rr
+    end
+    call srt_sort n, desc
+    r = make_array(n || ",2", 0, "", 0, 0.0)
+    if r = 0 then return
+    b = ar_base[r]
+    do i = 1 to n
+      e = srt_v[srt_p[i]]
+      call key_load e
+      et[b + (i - 1) * 2] = rt
+      es[b + (i - 1) * 2] = rs
+      ei[b + (i - 1) * 2] = ri
+      er[b + (i - 1) * 2] = rr
+      et[b + (i - 1) * 2 + 1] = et[e]
+      es[b + (i - 1) * 2 + 1] = es[e]
+      ei[b + (i - 1) * 2 + 1] = ei[e]
+      er[b + (i - 1) * 2 + 1] = er[e]
+    end
+    call setobj 4, r
+    return
+  end
+  if rt \= 4 then do
+    call snerr 4, "SORT requires an array or table"
+    return
+  end
+  aid = ri
+  tot = arr_size(aid)
+  b = ar_base[aid]
+  do i = 1 to tot
+    srt_t[i] = et[b + i - 1]
+    srt_s[i] = es[b + i - 1]
+    srt_i[i] = ei[b + i - 1]
+    srt_r[i] = er[b + i - 1]
+  end
+  call srt_sort tot, desc
+  call copy_val
+  r = ri
+  b = ar_base[r]
+  do i = 1 to tot
+    et[b + i - 1] = srt_t[srt_p[i]]
+    es[b + i - 1] = srt_s[srt_p[i]]
+    ei[b + i - 1] = srt_i[srt_p[i]]
+    er[b + i - 1] = srt_r[srt_p[i]]
+  end
+  return
+
+do_convert: procedure = .void
+  arg base = .int
+  ty = .string
+  t = .int
+  k = .int
+  n = .int
+  i = .int
+  r = .int
+  b = .int
+  tid = .int
+  e = .int
+  x = .int
+  aid = .int
+  nd = .int
+  s = .string
+  ty = upper(strip(sarg(base, 2)))
+  call ld base + 1
+  t = rt
+  select
+    when ty == "STRING" then do
+      if t <= 2 then call setstr rstr()
+      else if t = 7 then call setnull
+      else fail = 1
+    end
+    when ty == "INTEGER" then do
+      if t = 1 then nop
+      else if t = 2 then do
+        if rr > -9.2e18 & rr < 9.2e18 then call setint rxfloat..trunc(rr) as .int
+        else fail = 1
+      end
+      else if t = 0 then do
+        k = str2num(rs)
+        if k = 1 then call setint nv_i
+        else if k = 2 & nv_r > -9.2e18 & nv_r < 9.2e18 then call setint rxfloat..trunc(nv_r) as .int
+        else fail = 1
+      end
+      else fail = 1
+    end
+    when ty == "REAL" then do
+      if t = 2 then nop
+      else if t = 1 then call setreal ri as .float
+      else if t = 0 then do
+        k = str2num(rs)
+        if k = 1 then call setreal nv_i as .float
+        else if k = 2 then call setreal nv_r
+        else fail = 1
+      end
+      else fail = 1
+    end
+    when ty == "NUMERIC" then do
+      if t = 0 then do
+        k = str2num(rs)
+        if k = 1 then call setint nv_i
+        else if k = 2 then call setreal nv_r
+        else fail = 1
+      end
+      else if t > 2 then fail = 1
+    end
+    when ty == "PATTERN" then do
+      k = topat()
+      if k > 0 then call setobj 3, k
+      else fail = 1
+    end
+    when ty == "EXPRESSION" then do
+      if t = 8 then nop
+      else if t <= 2 then do
+        nd = parse_string_expr(rstr())
+        if nd > 0 then call setobj 8, nd
+        else fail = 1
+      end
+      else fail = 1
+    end
+    when ty == "NAME" then do
+      if t = 6 then nop
+      else if t <= 2 then call setobj 6, mkname(NM_VAR, vslot_rt(rstr()))
+      else fail = 1
+    end
+    when ty == "CODE" then do
+      if t = 7 then nop
+      else do
+        k = compile_code(rstr())
+        if k > 0 then call setobj 7, k
+        else fail = 1
+      end
+    end
+    when ty == "ARRAY" then do
+      if t = 4 then nop
+      else if t = 5 then do
+        tid = ri
+        n = table_list(tid)
+        if n = 0 then fail = 1
+        else do
+          r = make_array(n || ",2", 0, "", 0, 0.0)
+          b = ar_base[r]
+          do i = 1 to n
+            e = srt_v[i]
+            call key_load e
+            et[b + (i - 1) * 2] = rt
+            es[b + (i - 1) * 2] = rs
+            ei[b + (i - 1) * 2] = ri
+            er[b + (i - 1) * 2] = rr
+            et[b + (i - 1) * 2 + 1] = et[e]
+            es[b + (i - 1) * 2 + 1] = es[e]
+            ei[b + (i - 1) * 2 + 1] = ei[e]
+            er[b + (i - 1) * 2 + 1] = er[e]
+          end
+          call setobj 4, r
+        end
+      end
+      else fail = 1
+    end
+    when ty == "TABLE" then do
+      if t = 5 then nop
+      else if t = 4 & ar_nd[ri] = 2 then do
+        aid = ri
+        n = dm_hi[ar_d0[aid]] - dm_lo[ar_d0[aid]] + 1
+        tid = make_table()
+        b = ar_base[aid]
+        do i = 1 to n
+          rt = et[b + (i - 1) * 2]
+          rs = es[b + (i - 1) * 2]
+          ri = ei[b + (i - 1) * 2]
+          rr = er[b + (i - 1) * 2]
+          x = tbl_find(tid, 1)
+          et[x] = et[b + (i - 1) * 2 + 1]
+          es[x] = es[b + (i - 1) * 2 + 1]
+          ei[x] = ei[b + (i - 1) * 2 + 1]
+          er[x] = er[b + (i - 1) * 2 + 1]
+        end
+        call setobj 5, tid
+      end
+      else fail = 1
+    end
+    otherwise fail = 1
+  end
+  return
+
+/* INPUT / OUTPUT association */
+io_assoc: procedure = .void
+  arg isout = .int, base = .int, na = .int
+  slot = .int
+  u = .int
+  k = .int
+  fnm = .string
+  h = .int
+  md = .string
+  call ld base + 1
+  if rt = 6 & nm_k[ri] = NM_VAR then slot = nm_a[ri]
+  else if rt = 0 & rs \== "" then slot = vslot_rt(rs)
+  else do
+    call snerr 8, "INPUT/OUTPUT: bad variable"
+    return
+  end
+  if ab_t[base + 2] = 0 & ab_s[base + 2] == "" then do
+    if isout = 1 then u = 6
+    else u = 5
+  end
+  else u = ab_int(base + 2)
+  if fail = 1 then return
+  if u < 0 | u > 255 then do
+    call snerr 8, "Bad unit"
+    return
+  end
+  fnm = ""
+  do k = 3 to na
+    if ab_t[base + k] = 0 & ab_s[base + k] \== "" then do
+      if str2num(ab_s[base + k]) = 0 & left(strip(ab_s[base + k]), 1) \== "(" then fnm = strip(ab_s[base + k])
+    end
+  end
+  if fnm \== "" then do
+    if isout = 1 then md = "w"
+    else md = "r"
+    h = 0
+    assembler fopen h, fnm, md
+    if h = 0 then do
+      fail = 1
+      return
+    end
+    ou_h[u] = h
+    if isout = 1 then ou_m[u] = 2
+    else ou_m[u] = 1
+    ou_e[u] = 0
+    ou_n[u] = fnm
+  end
+  else if ou_m[u] = 0 then do
+    fail = 1
+    return
+  end
+  if isout = 1 then vfl[slot] = 1
+  else vfl[slot] = 2
+  v_unit[slot] = u
+  return
+
+/* ---------------------------------------------------------------------
+   Builtin functions.  Arguments are ab[base+1 .. base+na] (padded with
+   null values); the result is left in the registers.
+   --------------------------------------------------------------------- */
+builtin: procedure = .void
+  arg bi = .int, base = .int, na = .int
+  x = .float
+  y = .float
+  n = .int
+  m = .int
+  i = .int
+  j = .int
+  k = .int
+  s = .string
+  s2 = .string
+  s3 = .string
+  c = .string
+  p = .int
+  q = .int
+  r = .int
+  e = .int
+  t = .int
+  rcx = .int
+  select
+    when bi = FN_ABS then do
+      call ld base + 1
+      call tonum
+      if fail = 0 then do
+        if rt = 1 then do
+          if ri < 0 then ri = 0 - ri
+        end
+        else rr = rxfloat..fabs(rr)
+      end
+    end
+    when bi = FN_ANY then call setobj 3, pnode(PT_ANY, 0, 0, sarg(base, 1), 0)
+    when bi = FN_NOTANY then call setobj 3, pnode(PT_NOTANY, 0, 0, sarg(base, 1), 0)
+    when bi = FN_SPAN then call setobj 3, pnode(PT_SPAN, 0, 0, sarg(base, 1), 0)
+    when bi = FN_BREAK then call setobj 3, pnode(PT_BREAK, 0, 0, sarg(base, 1), 0)
+    when bi = FN_BREAKX then call setobj 3, pnode(PT_BREAKX, 0, 0, sarg(base, 1), 0)
+    when bi = FN_LEN then do
+      n = iarg(base, 1)
+      if fail = 0 then call setobj 3, pnode(PT_LEN, 0, 0, "", n)
+    end
+    when bi = FN_POS then do
+      n = iarg(base, 1)
+      if fail = 0 then call setobj 3, pnode(PT_POS, 0, 0, "", n)
+    end
+    when bi = FN_RPOS then do
+      n = iarg(base, 1)
+      if fail = 0 then call setobj 3, pnode(PT_RPOS, 0, 0, "", n)
+    end
+    when bi = FN_TAB then do
+      n = iarg(base, 1)
+      if fail = 0 then call setobj 3, pnode(PT_TAB, 0, 0, "", n)
+    end
+    when bi = FN_RTAB then do
+      n = iarg(base, 1)
+      if fail = 0 then call setobj 3, pnode(PT_RTAB, 0, 0, "", n)
+    end
+    when bi = FN_REM then call setobj 3, pnode(PT_REM, 0, 0, "", 0)
+    when bi = FN_ARB then call setobj 3, pnode(PT_ARB, 0, 0, "", 0)
+    when bi = FN_BAL then call setobj 3, pnode(PT_BAL, 0, 0, "", 0)
+    when bi = FN_FAIL then fail = 1
+    when bi = FN_ABORT then call setobj 3, pnode(PT_ABORT, 0, 0, "", 0)
+    when bi = FN_SUCCEED then call setobj 3, pnode(PT_SUCCEED, 0, 0, "", 0)
+    when bi = FN_ARBNO then do
+      call ld base + 1
+      p = topat()
+      if p > 0 then call setobj 3, pnode(PT_ARBNO, p, 0, "", 0)
+    end
+    when bi = FN_FENCE then do
+      if na = 0 then call setobj 3, pnode(PT_FENCE, 0, 0, "", 0)
+      else do
+        call ld base + 1
+        p = topat()
+        if p > 0 then call setobj 3, pnode(PT_FENCEP, p, 0, "", 0)
+      end
+    end
+    when bi = FN_APPLY then do
+      s = sarg(base, 1)
+      if fold = 1 then s = upper(s)
+      if na < 1 then call snerr 5, "APPLY: no function"
+      else call invoke s, wordpos(s, bfn), base + 1, na - 1
+    end
+    when bi = FN_ARG | bi = FN_LOCAL then do
+      s = sarg(base, 1)
+      n = iarg(base, 2)
+      if fail = 0 then do
+        s2 = fnmap[s]
+        if s2 == "" then fail = 1
+        else do
+          k = s2 as .int
+          if bi = FN_ARG then do
+            if n < 1 | n > fn_nargs[k] then fail = 1
+            else call setstr v_name[fn_vars[fn_first[k] + n]]
+          end
+          else do
+            if n < 1 | n > fn_nloc[k] then fail = 1
+            else call setstr v_name[fn_vars[fn_first[k] + fn_nargs[k] + n]]
+          end
+        end
+      end
+    end
+    when bi = FN_ARRAY then do
+      s = sarg(base, 1)
+      r = make_array(s, ab_t[base + 2], ab_s[base + 2], ab_i[base + 2], ab_r[base + 2])
+      if r > 0 then call setobj 4, r
+    end
+    when bi = FN_ATAN | bi = FN_SIN | bi = FN_COS | bi = FN_TAN | bi = FN_EXP | bi = FN_LN | bi = FN_SQRT then do
+      call ld base + 1
+      call tonum
+      if fail = 0 then do
+        if rt = 1 then x = ri as .float
+        else x = rr
+        if bi = FN_ATAN then call setreal rxfloat..atan(x)
+        else if bi = FN_SIN then call setreal rxfloat..sin(x)
+        else if bi = FN_COS then call setreal rxfloat..cos(x)
+        else if bi = FN_TAN then call setreal rxfloat..tan(x)
+        else if bi = FN_EXP then call setreal rxfloat..exp(x)
+        else if bi = FN_LN then do
+          if x <= 0.0 then call snerr 13, "Illegal argument to LN"
+          else call setreal rxfloat..log(x)
+        end
+        else do
+          if x < 0.0 then call snerr 13, "Illegal argument to SQRT"
+          else call setreal rxfloat..sqrt(x)
+        end
+      end
+    end
+    when bi = FN_BACKSPACE | bi = FN_EJECT | bi = FN_DETACH | bi = FN_TRACE | bi = FN_STOPTR | bi = FN_COLLECT | bi = FN_UNLOAD then do
+      if bi = FN_COLLECT then call setint 0
+    end
+    when bi = FN_CHAR then do
+      n = iarg(base, 1)
+      if fail = 0 then do
+        if n < 0 | n > 255 then call snerr 8, "CHAR: argument out of range"
+        else call setstr d2c(n)
+      end
+    end
+    when bi = FN_CHOP then do
+      call ld base + 1
+      call tonum
+      if fail = 0 & rt = 2 then rr = rxfloat..trunc(rr)
+    end
+    when bi = FN_CLEAR then do
+      do i = 1 to nv
+        vt[i] = 0
+        vs[i] = ""
+        vi[i] = 0
+        vr[i] = 0.0
+      end
+    end
+    when bi = FN_CODE then do
+      k = compile_code(sarg(base, 1))
+      if k > 0 then call setobj 7, k
+      else fail = 1
+    end
+    when bi = FN_CONVERT then call do_convert base
+    when bi = FN_COPY then do
+      call ld base + 1
+      call copy_val
+    end
+    when bi = FN_DATA then call define_data sarg(base, 1)
+    when bi = FN_DATATYPE then do
+      call ld base + 1
+      call setstr dtype()
+    end
+    when bi = FN_DATE then call setstr "01/01/2000"
+    when bi = FN_DEFINE then call define_fn sarg(base, 1), sarg(base, 2)
+    when bi = FN_DIFFER then do
+      if ident_ab(base + 1, base + 2) = 1 then fail = 1
+    end
+    when bi = FN_IDENT then do
+      if ident_ab(base + 1, base + 2) = 0 then fail = 1
+    end
+    when bi = FN_DUMP then call do_dump
+    when bi = FN_ENDFILE then do
+      n = iarg(base, 1)
+      if fail = 0 & n >= 0 & n <= 255 then do
+        if ou_m[n] \= 0 & n > 7 then do
+          k = ou_h[n]
+          assembler fclose rcx, k
+          ou_m[n] = 0
+          ou_h[n] = 0
+        end
+      end
+    end
+    when bi = FN_REWIND then do
+      n = iarg(base, 1)
+      if fail = 0 & n > 7 & n <= 255 & ou_m[n] \= 0 then do
+        k = ou_h[n]
+        assembler fclose rcx, k
+        s = ou_n[n]
+        if ou_m[n] = 1 then s2 = "r"
+        else s2 = "a"
+        k = 0
+        assembler fopen k, s, s2
+        ou_h[n] = k
+        ou_e[n] = 0
+      end
+    end
+    when bi = FN_EQ | bi = FN_NE | bi = FN_LT | bi = FN_LE | bi = FN_GT | bi = FN_GE then do
+      k = numcmp(base + 1, base + 2)
+      if fail = 0 then do
+        if bi = FN_EQ & k \= 0 then fail = 1
+        if bi = FN_NE & k = 0 then fail = 1
+        if bi = FN_LT & k >= 0 then fail = 1
+        if bi = FN_LE & k > 0 then fail = 1
+        if bi = FN_GT & k <= 0 then fail = 1
+        if bi = FN_GE & k < 0 then fail = 1
+      end
+    end
+    when bi = FN_LEQ | bi = FN_LNE | bi = FN_LLT | bi = FN_LLE | bi = FN_LGT | bi = FN_LGE then do
+      k = strcmp0(sarg(base, 1), sarg(base, 2))
+      if bi = FN_LEQ & k \= 0 then fail = 1
+      if bi = FN_LNE & k = 0 then fail = 1
+      if bi = FN_LLT & k >= 0 then fail = 1
+      if bi = FN_LLE & k > 0 then fail = 1
+      if bi = FN_LGT & k <= 0 then fail = 1
+      if bi = FN_LGE & k < 0 then fail = 1
+    end
+    when bi = FN_EVAL then do
+      call ld base + 1
+      if rt = 8 then call eval_node ri
+      else if rt = 0 then do
+        k = parse_string_expr(rs)
+        if k > 0 then call eval_node k
+        else fail = 1
+      end
+      else if rt = 1 | rt = 2 then nop
+      else if rt = 3 | rt = 4 | rt = 5 | rt = 9 then nop
+      else fail = 1
+    end
+    when bi = FN_EXIT then do
+      n = 0
+      if na >= 1 & ab_t[base + 1] \= 0 then n = iarg(base, 1)
+      rc_exit = n
+      halted = 1
+    end
+    when bi = FN_FIELD then do
+      s = sarg(base, 1)
+      n = iarg(base, 2)
+      s2 = tymap[s]
+      if s2 == "" then fail = 1
+      else do
+        k = s2 as .int
+        if n < 1 | n > ty_nf[k] then fail = 1
+        else call setstr ty_fld[ty_f0[k] + n - 1]
+      end
+    end
+    when bi = FN_HOST then call setstr ""
+    when bi = FN_INPUT then call io_assoc 0, base, na
+    when bi = FN_OUTPUT then call io_assoc 1, base, na
+    when bi = FN_INTEGER then do
+      call ld base + 1
+      if rt = 1 then nop
+      else if rt = 0 then do
+        if str2num(rs) \= 1 then fail = 1
+        else if length(strip(rs)) = 0 then fail = 1
+        else call setnull
+      end
+      else fail = 1
+      if fail = 0 then call setnull
+    end
+    when bi = FN_REAL then do
+      call ld base + 1
+      if rt \= 2 then fail = 1
+      else call setnull
+    end
+    when bi = FN_ITEM then do
+      call ld base + 1
+      if rt = 4 then do
+        e = arr_elem(ri, base + 1, na - 1)
+        if e = 0 then fail = 1
+        else call el_get e
+      end
+      else if rt = 5 then do
+        t = ri
+        call ld base + 2
+        e = tbl_find(t, 0)
+        if e = 0 then call setnull
+        else call el_get e
+      end
+      else fail = 1
+    end
+    when bi = FN_LPAD | bi = FN_RPAD then do
+      s = sarg(base, 1)
+      n = iarg(base, 2)
+      s2 = sarg(base, 3)
+      if s2 == "" then s2 = " "
+      if fail = 0 then do
+        if length(s) >= n then call setstr s
+        else if bi = FN_LPAD then call setstr copies(left(s2, 1), n - length(s)) || s
+        else call setstr s || copies(left(s2, 1), n - length(s))
+      end
+    end
+    when bi = FN_OPSYN then do
+      s = sarg(base, 1)
+      s2 = sarg(base, 2)
+      if fold = 1 then do
+        s = upper(s)
+        s2 = upper(s2)
+      end
+      if fnmap[s2] \== "" then fnmap[s] = fnmap[s2]
+      else if wordpos(s2, bfn) > 0 then do
+        fnmap[s] = ""
+        fnalias[s] = s2
+      end
+      else if fnalias[s2] \== "" then fnalias[s] = fnalias[s2]
+      else call snerr 5, "OPSYN: undefined function"
+    end
+    when bi = FN_PROTOTYPE then do
+      call ld base + 1
+      if rt = 4 then call setstr ar_proto[ri]
+      else if rt = 5 then call setint tb_n[ri]
+      else fail = 1
+    end
+    when bi = FN_RANDOM then do
+      rnd_state = (rnd_state * 1103515245 + 12345) // 2147483648
+      if rnd_state < 0 then rnd_state = 0 - rnd_state
+      n = 0
+      if na >= 1 & ab_t[base + 1] \= 0 then n = iarg(base, 1)
+      if n > 0 then call setint rnd_state // n
+      else call setreal rnd_state as .float / 2147483648.0
+    end
+    when bi = FN_REMDR then do
+      n = iarg(base, 1)
+      m = iarg(base, 2)
+      if fail = 0 then do
+        if m = 0 then call snerr 12, "Division by zero"
+        else call setint n // m
+      end
+    end
+    when bi = FN_REPLACE then do
+      s = sarg(base, 1)
+      s2 = sarg(base, 2)
+      s3 = sarg(base, 3)
+      if length(s2) \= length(s3) then call snerr 8, "REPLACE: argument lengths differ"
+      else call setstr translate(s, s3, s2)
+    end
+    when bi = FN_REVERSE then call setstr reverse(sarg(base, 1))
+    when bi = FN_SIZE then do
+      call ld base + 1
+      call setint length(rstr())
+    end
+    when bi = FN_SORT then call do_sort 0, base
+    when bi = FN_RSORT then call do_sort 1, base
+    when bi = FN_SUBSTR then do
+      s = sarg(base, 1)
+      i = iarg(base, 2)
+      if ab_t[base + 3] = 0 & ab_s[base + 3] == "" then n = length(s) - i + 1
+      else n = iarg(base, 3)
+      if fail = 0 then do
+        if i < 1 | n < 0 | i + n - 1 > length(s) then fail = 1
+        else call setstr substr(s, i, n)
+      end
+    end
+    when bi = FN_DUPL then do
+      s = sarg(base, 1)
+      n = iarg(base, 2)
+      if fail = 0 then do
+        if n < 0 then call snerr 8, "DUPL: negative count"
+        else call setstr copies(s, n)
+      end
+    end
+    when bi = FN_TABLE then call setobj 5, make_table()
+    when bi = FN_TIME then do
+      x = time("E") as .float
+      call setint rxfloat..trunc(x * 1000.0) as .int
+    end
+    when bi = FN_TRIM then call setstr strip(sarg(base, 1), "T")
+    when bi = FN_LOAD then call snerr 8, "LOAD not supported"
+    otherwise call snerr 5, "Unimplemented function"
+  end
+  if fail = 0 then do
+    if bi = FN_EQ | bi = FN_NE | bi = FN_LT | bi = FN_LE | bi = FN_GT | bi = FN_GE | bi = FN_LEQ | bi = FN_LNE | bi = FN_LLT | bi = FN_LLE | bi = FN_LGT | bi = FN_LGE | bi = FN_DEFINE | bi = FN_DATA | bi = FN_ENDFILE | bi = FN_REWIND | bi = FN_OPSYN | bi = FN_CLEAR | bi = FN_INPUT | bi = FN_OUTPUT | bi = FN_IDENT | bi = FN_DIFFER | bi = FN_DUMP | bi = FN_BACKSPACE | bi = FN_EJECT | bi = FN_DETACH | bi = FN_TRACE | bi = FN_STOPTR | bi = FN_UNLOAD | bi = FN_EXIT then call setnull
+  end
+  return
+
+do_dump: procedure = .void
+  i = .int
+  rcx = .int
+  do i = 1 to nv
+    if vt[i] \= 0 | vs[i] \== "" then do
+      rt = vt[i]
+      rs = vs[i]
+      ri = vi[i]
+      rr = vr[i]
+      if rt <= 2 then call put_line 6, v_name[i] || " = " || rstr()
+    end
+  end
+  return

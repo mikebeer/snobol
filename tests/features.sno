@@ -1,0 +1,44 @@
+* recursive pattern, cursor, immediate, anchored, fence
+        P = '(' *P ')' | 'x'
+        '((x))' POS(0) P RPOS(0)           :F(NO1)
+        OUTPUT = 'nested ok'               :(N2)
+NO1     OUTPUT = 'nested FAIL'
+N2      'hello world' 'o' @A 'w'
+        OUTPUT = 'cursor ' A
+        'abcabc' ('b' | 'c') $ IM 'a'
+        OUTPUT = 'imm ' IM
+        &ANCHOR = 1
+        'xab' 'ab'                         :S(BAD)F(OKA)
+BAD     OUTPUT = 'anchor FAIL'             :(N3)
+OKA     OUTPUT = 'anchor ok'
+N3      &ANCHOR = 0
+        'aaa' ARBNO('a') . Z RPOS(0)
+        OUTPUT = 'arbno ' Z
+        'abc' BREAKX('c') . BX
+        OUTPUT = 'breakx ' BX
+        TEXT = 'the rain in spain stays mainly'
+WL      TEXT SPAN('abcdefghijklmnopqrstuvwxyz') =   :F(WD)
+        WORDS = WORDS + 1
+        TEXT ' ' =                          :(WL)
+WD      OUTPUT = 'words ' WORDS
+        OUTPUT = LPAD(5,4,'0') RPAD('ab',4,'.') '|'
+        OUTPUT = TRIM('abc   ') '|'
+        OUTPUT = 3.0 ' ' 1.0e10 ' ' 2 ** 10 ' ' 2 ** 0.5 ' ' -7 / 2 ' ' REMDR(-7,2)
+        OUTPUT = LGT('b','a') 'lgt' GT(3,2) 'gt'
+        OUTPUT = CONVERT('123','INTEGER') + 1
+        OUTPUT = SUBSTR('abcdef',2,3)
+        OUTPUT = REPLACE('hello','el','ip')
+        I = 0
+        T0 = TIME()
+LOOP    I = I + 1
+        S = S 'x'
+        LT(I,20000)                         :S(LOOP)
+        OUTPUT = SIZE(S) ' ' I
+        &STLIMIT = 100000000
+        OUTPUT = 'steps ok'
+        OUTPUT = 'a' ; OUTPUT = 'b'
+        A = ARRAY('2,2','z')
+        A<2,2> = 'q'
+        OUTPUT = A<1,1> A<2,2> PROTOTYPE(A)
+        OUTPUT = ARG('FIB',1)
+END

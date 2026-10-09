@@ -1,0 +1,33 @@
+* Recursive-descent calculator: + - * / and parentheses.
+* Reads one expression per line; each function consumes text from S.
+        DEFINE('EXPR()T,O')
+        DEFINE('TERM()F,O')
+        DEFINE('FACT()')
+        DIG = '0123456789'
+READ    LINE = INPUT                         :F(END)
+        S = LINE
+SQ      S ' ' = ''                           :S(SQ)
+        R = EXPR()                           :F(BAD)
+        IDENT(S)                             :F(BAD)
+        OUTPUT = LINE ' = ' R                :(READ)
+BAD     OUTPUT = LINE ' : syntax error'      :(READ)
+EXPR    EXPR = TERM()                        :F(FRETURN)
+E1      S POS(0) ANY('+-') . O =                    :F(RETURN)
+        T = TERM()                           :F(FRETURN)
+        EXPR = IDENT(O,'+') EXPR + T         :S(E1)
+        EXPR = EXPR - T                      :(E1)
+TERM    TERM = FACT()                        :F(FRETURN)
+T1      S POS(0) ANY('*/') . O =                    :F(RETURN)
+        F = FACT()                           :F(FRETURN)
+        TERM = IDENT(O,'*') TERM * F         :S(T1)
+        TERM = TERM / F                      :(T1)
+FACT    S POS(0) SPAN(DIG) . FACT =                 :S(RETURN)
+        S POS(0) '(' =                              :F(FRETURN)
+        FACT = EXPR()                        :F(FRETURN)
+        S POS(0) ')' =                              :F(FRETURN)S(RETURN)
+END
+1+2*3
+(1+2)*3
+100/7-2
+2 * (3 + 4) * 5
+1+

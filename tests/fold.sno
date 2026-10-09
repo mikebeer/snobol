@@ -1,0 +1,5 @@
+* run with -f : identifiers are case-folded
+        total = 5
+        OUTPUT = TOTAL + 1
+        output = 'lower case works'
+end

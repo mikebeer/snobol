@@ -1,0 +1,17 @@
+#!/bin/sh
+# Launcher for the CREXX SNOBOL4 interpreter.
+#   ./snobol [options] program.sno [program args]
+#   ./snobol                       
+# The interpreter is compiled to bytecode on first use (about half a minute),
+# afterwards it starts in under a second.  Set CREXX to the crexx driver if it
+# is not on your PATH.
+DIR=$(cd "$(dirname "$0")" && pwd)
+CREXX=${CREXX:-crexx}
+if [ ! -f "$DIR/snobol.rxbin" ] || [ "$DIR/snobol.crexx" -nt "$DIR/snobol.rxbin" ]; then
+  echo "snobol: compiling interpreter (first run only)..." >&2
+  "$CREXX" "$DIR/snobol.crexx" -noexec >/dev/null 2>&1 || {
+    echo "snobol: compilation failed - run: $CREXX $DIR/snobol.crexx -noexec" >&2
+    exit 2
+  }
+fi
+exec "$CREXX" "$DIR/snobol.crexx" -nocompile -args "$@"

@@ -1,0 +1,4 @@
+division failed, errtype 12
+conversion failed 1
+subscript fail
+snobol: error 5 at statement 11 (line 12): Undefined function called: FOO

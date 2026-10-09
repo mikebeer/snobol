@@ -1,0 +1,38 @@
+* more: functions, recursion, indirect, input, goto, SORT, EVAL
+        DEFINE('FIB(N)')                  :(START)
+FIB     FIB = LT(N,2) N                   :S(RETURN)
+        FIB = FIB(N - 1) + FIB(N - 2)     :(RETURN)
+START   OUTPUT = FIB(15)
+        DEFINE('REV(S)T')                 :(S2)
+REV     S LEN(1) . C = ''                 :F(REV2)
+        T = C T                           :(REV)
+REV2    REV = T                           :(RETURN)
+S2      OUTPUT = REV('abcdef')
+        X = 'Y'
+        $X = 42
+        OUTPUT = Y
+        L = 'GO'
+        :($L)
+        OUTPUT = 'skipped'
+GO      OUTPUT = 'went'
+        T = TABLE()
+        T<'b'> = 2
+        T<'a'> = 1
+        T<'c'> = 3
+        A = SORT(T)
+        I = 1
+LP      OUTPUT = A<I,1> '=' A<I,2>
+        I = I + 1
+        LE(I,3)                           :S(LP)
+        OUTPUT = EVAL('1 + 2 * 3')
+        OUTPUT = DATATYPE(1.5) DATATYPE('x') DATATYPE(T) DATATYPE(A)
+        N = INPUT
+        OUTPUT = 'got ' N
+        N = INPUT
+        OUTPUT = 'got ' N
+        N = INPUT                         :F(EOF)
+        OUTPUT = 'bad'
+EOF     OUTPUT = 'eof ok'
+END
+first line
+second line

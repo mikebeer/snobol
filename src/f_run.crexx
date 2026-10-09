@@ -1,0 +1,184 @@
+
+/* ---------------------------------------------------------------------
+   Statement execution
+   --------------------------------------------------------------------- */
+exec_stmt: procedure = .int
+  arg pc = .int
+  sn = .int
+  pn = .int
+  rn = .int
+  hasrep = .int
+  k = .int
+  a = .int
+  s = .string
+  pat = .int
+  rs2 = .string
+  sn = st_subj[pc]
+  pn = st_pat[pc]
+  rn = st_repl[pc]
+  hasrep = st_hasrep[pc]
+  fail = 0
+  if sn = 0 then return 1
+  if pn = 0 & hasrep = 0 then do
+    call eval_node sn
+    if fail = 1 then return 0
+    return 1
+  end
+  if pn = 0 then do
+    call get_lv sn
+    if fail = 1 then return 0
+    k = lv_k
+    a = lv_a
+    call eval_node rn
+    if fail = 1 then return 0
+    call store_nm k, a
+    if fail = 1 then return 0
+    return 1
+  end
+  if hasrep = 1 then do
+    call get_lv sn
+    if fail = 1 then return 0
+    k = lv_k
+    a = lv_a
+    call fetch_nm k, a
+    if fail = 1 then return 0
+  end
+  else do
+    call eval_node sn
+    if fail = 1 then return 0
+  end
+  if rt > 2 then do
+    call snerr 4, "Illegal data type for pattern match subject"
+    return 0
+  end
+  s = rstr()
+  call eval_node pn
+  if fail = 1 then return 0
+  pat = topat()
+  if pat = 0 then return 0
+  if pat_match(s, pat) = 0 then return 0
+  if hasrep = 0 then return 1
+  call eval_node rn
+  if fail = 1 then return 0
+  if rt > 2 then do
+    call snerr 4, "Illegal data type in replacement"
+    return 0
+  end
+  rs2 = rstr()
+  call setstr left(s, mstart) || rs2 || substr(s, mend + 1)
+  call store_nm k, a
+  if fail = 1 then return 0
+  return 1
+
+/* run statements from pc0; returns 0 (end), 1 RETURN, 2 FRETURN, 3 NRETURN */
+exec_from: procedure = .int
+  arg pc0 = .int
+  pc = .int
+  ok = .int
+  g = .int
+  lab = .string
+  v = .string
+  isind = .int
+  pc = pc0
+  do while pc <= nst & halted = 0
+    cur_st = pc
+    kw_stcount = kw_stcount + 1
+    if kw_stlimit >= 0 & kw_stcount > kw_stlimit then do
+      call snerr 22, "Statement limit exceeded"
+      leave
+    end
+    if pc = endpc then do
+      halted = 1
+      leave
+    end
+    ok = exec_stmt(pc)
+    if halted = 1 then leave
+    g = st_gu[pc]
+    if g = 0 then do
+      if ok = 1 then g = st_gs[pc]
+      else g = st_gf[pc]
+    end
+    if g = 0 then do
+      pc = pc + 1
+      iterate
+    end
+    fail = 0
+    isind = 0
+    if nd_t[g] = N_STR then lab = nd_s[g]
+    else do
+      if nd_t[g] = N_INDIR then call eval_node nd_a[g]
+      else call eval_node g
+      if fail = 1 then do
+        if halted = 0 then call snerr 24, "Goto target evaluation failed"
+        leave
+      end
+      if rt = 7 then do
+        pc = cd_start[ri]
+        iterate
+      end
+      lab = rstr()
+    end
+    if lab == "RETURN" then return 1
+    if lab == "FRETURN" then return 2
+    if lab == "NRETURN" then return 3
+    v = labels[lab]
+    if v == "" then do
+      call snerr 24, "Undefined label " || lab
+      leave
+    end
+    kw_lastno = pc
+    pc = v as .int
+  end
+  return 0
+
+run_program: procedure = .void
+  v = .string
+  v = labels["END"]
+  if v \== "" then endpc = v as .int
+  else endpc = 0
+  call exec_from 1
+  return
+
+/* ---------------------------------------------------------------------
+   Predefined variables
+   --------------------------------------------------------------------- */
+def_globals: procedure = .void
+  s = .int
+  ou_h[5] = h_in
+  ou_m[5] = 1
+  ou_e[5] = 0
+  ou_h[6] = h_out
+  ou_m[6] = 2
+  ou_h[7] = h_err
+  ou_m[7] = 2
+  s = vslot("OUTPUT")
+  vfl[s] = 1
+  v_unit[s] = 6
+  s = vslot("INPUT")
+  vfl[s] = 2
+  v_unit[s] = 5
+  s = vslot("TERMINAL")
+  vfl[s] = 1
+  v_unit[s] = 7
+  s = vslot("ARB")
+  vt[s] = 3
+  vi[s] = pnode(PT_ARB, 0, 0, "", 0)
+  s = vslot("BAL")
+  vt[s] = 3
+  vi[s] = pnode(PT_BAL, 0, 0, "", 0)
+  s = vslot("REM")
+  vt[s] = 3
+  vi[s] = pnode(PT_REM, 0, 0, "", 0)
+  s = vslot("FAIL")
+  vt[s] = 3
+  vi[s] = pnode(PT_FAIL, 0, 0, "", 0)
+  s = vslot("FENCE")
+  vt[s] = 3
+  vi[s] = pnode(PT_FENCE, 0, 0, "", 0)
+  s = vslot("ABORT")
+  vt[s] = 3
+  vi[s] = pnode(PT_ABORT, 0, 0, "", 0)
+  s = vslot("SUCCEED")
+  vt[s] = 3
+  vi[s] = pnode(PT_SUCCEED, 0, 0, "", 0)
+  return

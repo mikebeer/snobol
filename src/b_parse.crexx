@@ -1,0 +1,726 @@
+
+/* ---------------------------------------------------------------------
+   Loading the program text
+   --------------------------------------------------------------------- */
+load_program: procedure = .int
+  arg fn = .string
+  fid = .int
+  eof = .int
+  rcx = .int
+  line = .string
+  cur = .string
+  have = .int
+  curline = .int
+  n = .int
+  c = .string
+  t = .string
+  ok = .int
+  isend = .int
+  lines = .string[]
+  rmode = "r"
+  fid = 0
+  assembler fopen fid, fn, rmode
+  if fid = 0 then do
+    say "snobol: cannot open" fn
+    return 0
+  end
+  eof = 0
+  n = 0
+  do while eof = 0
+    line = ""
+    assembler freadline line, fid
+    assembler feof eof, fid
+    if eof > 0 & length(line) = 0 then leave
+    if right(line, 1) == '0d'x then line = left(line, length(line) - 1)
+    n = n + 1
+    lines[n] = line
+  end
+  assembler fclose rcx, fid
+  ok = 1
+  have = 0
+  cur = ""
+  curline = 0
+  isend = 0
+  do i = 1 to n
+    line = lines[i]
+    if line == "" then iterate
+    c = left(line, 1)
+    if c == "*" | c == "-" then iterate
+    if c == "+" | c == "." then do
+      if have = 1 then cur = cur || substr(line, 2)
+      iterate
+    end
+    if have = 1 then do
+      if add_statement(cur, curline) = 0 then ok = 0
+    end
+    cur = line
+    curline = i
+    have = 1
+    t = upper(strip(line))
+    if left(line, 3) == "END" | left(line, 3) == "end" then do
+      if length(strip(line)) = 3 | substr(line, 4, 1) == " " | substr(line, 4, 1) == '09'x then do
+        isend = 1
+        if add_statement(cur, curline) = 0 then ok = 0
+        have = 0
+        do j = i + 1 to n
+          inq_n = inq_n + 1
+          inq[inq_n] = lines[j]
+        end
+        leave
+      end
+    end
+  end
+  if have = 1 & isend = 0 then do
+    if add_statement(cur, curline) = 0 then ok = 0
+  end
+  if isend = 0 then do
+    /* no END statement: add an implicit one */
+    ok = ok
+  end
+  return ok
+
+/* split at top level ';' and parse each piece */
+add_statement: procedure = .int
+  arg txt = .string, li = .int
+  n = .int
+  i = .int
+  c = .string
+  q = .string
+  piece = .string
+  first = .int
+  ok = .int
+  n = length(txt)
+  q = ""
+  piece = ""
+  first = 1
+  ok = 1
+  do i = 1 to n
+    c = substr(txt, i, 1)
+    if q \== "" then do
+      if c == q then q = ""
+      piece = piece || c
+    end
+    else if c == "'" | c == '"' then do
+      q = c
+      piece = piece || c
+    end
+    else if c == ";" then do
+      if parse_statement(piece, li) = 0 then ok = 0
+      piece = " "
+    end
+    else piece = piece || c
+  end
+  if parse_statement(piece, li) = 0 then ok = 0
+  return ok
+
+parse_statement: procedure = .int
+  arg txt = .string, li = .int
+  p = .int
+  lab = .string
+  body = .string
+  sidx = .int
+  lab = ""
+  body = txt
+  if txt \== "" & left(txt, 1) \== " " & left(txt, 1) \== '09'x then do
+    p = verify(txt, " " || '09'x, "M")
+    if p = 0 then do
+      lab = txt
+      body = ""
+    end
+    else do
+      lab = left(txt, p - 1)
+      body = substr(txt, p)
+    end
+  end
+  if fold = 1 then lab = upper(lab)
+  nst = nst + 1
+  sidx = nst
+  st_label[sidx] = lab
+  st_subj[sidx] = 0
+  st_pat[sidx] = 0
+  st_repl[sidx] = 0
+  st_hasrep[sidx] = 0
+  st_gs[sidx] = 0
+  st_gf[sidx] = 0
+  st_gu[sidx] = 0
+  st_line[sidx] = li
+  if lab \== "" then labels[lab] = sidx
+  src = body
+  ps = 1
+  slen = length(body)
+  perr = 0
+  cur_line = li
+  call parse_body sidx
+  if perr = 1 then do
+    say "snobol: syntax error at line" li || ":" perr_msg
+    return 0
+  end
+  return 1
+
+pfail: procedure = .void
+  arg msg = .string
+  if perr = 0 then do
+    perr = 1
+    perr_msg = msg
+  end
+  return
+
+skipb: procedure = .int
+  k = .int
+  k = 0
+  do while ps <= slen & (substr(src, ps, 1) == " " | substr(src, ps, 1) == '09'x)
+    ps = ps + 1
+    k = 1
+  end
+  return k
+
+pch: procedure = .string
+  return substr(src, ps, 1)
+
+mk: procedure = .int
+  arg t = .int, a = .int, b = .int, s = .string, i = .int
+  nn = nn + 1
+  nd_t[nn] = t
+  nd_a[nn] = a
+  nd_b[nn] = b
+  nd_s[nn] = s
+  nd_i[nn] = i
+  nd_r[nn] = 0.0
+  return nn
+
+vslot: procedure = .int
+  arg nme = .string
+  v = .string
+  v = vmap[nme]
+  if v \== "" then return v as .int
+  nv = nv + 1
+  v_name[nv] = nme
+  vt[nv] = 0
+  vs[nv] = ""
+  vi[nv] = 0
+  vr[nv] = 0.0
+  vfl[nv] = 0
+  v_unit[nv] = 0
+  vmap[nme] = nv
+  return nv
+
+isnamech: procedure = .int
+  arg c = .string
+  if c == "" then return 0
+  if c == "." | c == "_" then return 1
+  if c >>= "0" & c <<= "9" then return 1
+  if c >>= "A" & c <<= "Z" then return 1
+  if c >>= "a" & c <<= "z" then return 1
+  return 0
+
+isdig: procedure = .int
+  arg c = .string
+  if c == "" then return 0
+  if c >>= "0" & c <<= "9" then return 1
+  return 0
+
+isalpha: procedure = .int
+  arg c = .string
+  if c == "" then return 0
+  if c >>= "A" & c <<= "Z" then return 1
+  if c >>= "a" & c <<= "z" then return 1
+  return 0
+
+kwcode: procedure = .int
+  arg nme = .string
+  select
+    when nme == "ANCHOR" then return KW_ANCHOR
+    when nme == "TRIM" then return KW_TRIM
+    when nme == "FULLSCAN" then return KW_FULLSCAN
+    when nme == "ERRLIMIT" then return KW_ERRLIMIT
+    when nme == "ERRTYPE" then return KW_ERRTYPE
+    when nme == "STCOUNT" then return KW_STCOUNT
+    when nme == "STLIMIT" then return KW_STLIMIT
+    when nme == "STNO" then return KW_STNO
+    when nme == "ALPHABET" then return KW_ALPHABET
+    when nme == "LCASE" then return KW_LCASE
+    when nme == "UCASE" then return KW_UCASE
+    when nme == "MAXLNGTH" then return KW_MAXLNGTH
+    when nme == "FNCLEVEL" then return KW_FNCLEVEL
+    when nme == "LASTNO" then return KW_LASTNO
+    when nme == "TRACE" then return KW_TRACE
+    when nme == "FTRACE" then return KW_FTRACE
+    when nme == "INPUT" then return KW_INPUT
+    when nme == "OUTPUT" then return KW_OUTPUT
+    when nme == "CODE" then return KW_CODE
+    when nme == "DIGITS" then return KW_DIGITS
+    when nme == "ABORT" then return KW_ABORT
+    otherwise nop
+  end
+  return 0
+
+/* ---------------------------------------------------------------------
+   Statement body:  [subject [pattern] [= replacement]] [: goto]
+   --------------------------------------------------------------------- */
+parse_body: procedure = .void
+  arg sidx = .int
+  subj = .int
+  pat = .int
+  c = .string
+  call skipb
+  if ps > slen then return
+  c = pch()
+  if c == ":" then do
+    ps = ps + 1
+    call parse_goto sidx
+    return
+  end
+  subj = parse_operand()
+  st_subj[sidx] = subj
+  call skipb
+  if ps > slen then return
+  c = pch()
+  if c == ":" then do
+    ps = ps + 1
+    call parse_goto sidx
+    return
+  end
+  if c \== "=" then do
+    pat = parse_expr(1)
+    st_pat[sidx] = pat
+    call skipb
+    if ps > slen then return
+    c = pch()
+  end
+  if c == "=" then do
+    ps = ps + 1
+    st_hasrep[sidx] = 1
+    call skipb
+    if ps > slen | pch() == ":" then st_repl[sidx] = mk(N_STR, 0, 0, "", 0)
+    else st_repl[sidx] = parse_expr(1)
+    call skipb
+    if ps > slen then return
+    c = pch()
+  end
+  if c == ":" then do
+    ps = ps + 1
+    call parse_goto sidx
+  end
+  else call pfail "unexpected text '" || substr(src, ps, 12) || "'"
+  return
+
+parse_goto: procedure = .void
+  arg sidx = .int
+  c = .string
+  c2 = .string
+  nd = .int
+  do forever
+    call skipb
+    if ps > slen then leave
+    if perr = 1 then leave
+    c = upper(pch())
+    c2 = substr(src, ps + 1, 1)
+    if (c == "S" | c == "F") & c2 == "(" then do
+      ps = ps + 2
+      nd = goto_target()
+      if c == "S" then st_gs[sidx] = nd
+      else st_gf[sidx] = nd
+    end
+    else if c == "(" then do
+      ps = ps + 1
+      nd = goto_target()
+      st_gu[sidx] = nd
+    end
+    else do
+      call pfail "bad goto field"
+      leave
+    end
+  end
+  return
+
+goto_target: procedure = .int
+  e = .int
+  txt = .string
+  c = .string
+  nd = .int
+  call skipb
+  e = pos(")", src, ps)
+  if e = 0 then do
+    call pfail "missing ) in goto"
+    return mk(N_STR, 0, 0, "", 0)
+  end
+  txt = strip(substr(src, ps, e - ps))
+  c = left(txt, 1)
+  if c \== "$" & c \== "(" & c \== "*" & c \== "'" & c \== '"' then do
+    if fold = 1 then txt = upper(txt)
+    ps = e + 1
+    return mk(N_STR, 0, 0, txt, 0)
+  end
+  nd = parse_expr(1)
+  call skipb
+  if pch() == ")" then ps = ps + 1
+  else call pfail "missing ) in goto"
+  return nd
+
+/* ---------------------------------------------------------------------
+   Expressions
+   --------------------------------------------------------------------- */
+/* binary operator at position p?  returns "" or the operator text */
+binop_at: procedure = .string
+  arg p = .int, blank = .int
+  c = .string
+  c2 = .string
+  nxt = .string
+  c = substr(src, p, 1)
+  c2 = substr(src, p, 2)
+  if c2 == "**" then return "**"
+  if c == "|" | c == "/" | c == "!" then return c
+  if c == "+" | c == "-" | c == "*" | c == "." | c == "$" | c == "?" then do
+    nxt = substr(src, p + 1, 1)
+    if blank = 0 then return c
+    if nxt == "" | nxt == " " | nxt == '09'x then return c
+  end
+  return ""
+
+oprec: procedure = .int
+  arg op = .string
+  select
+    when op == "?" then return 1
+    when op == "|" then return 3
+    when op == "+" | op == "-" then return 6
+    when op == "/" then return 8
+    when op == "*" then return 9
+    when op == "**" | op == "!" then return 11
+    when op == "$" | op == "." then return 12
+    otherwise nop
+  end
+  return 0
+
+parse_expr: procedure = .int
+  arg minp = .int
+  left0 = .int
+  right0 = .int
+  p = .int
+  blank = .int
+  c = .string
+  op = .string
+  save = .int
+  left0 = parse_operand()
+  do forever
+    if perr = 1 then leave
+    save = ps
+    blank = skipb()
+    if ps > slen then do
+      ps = save
+      leave
+    end
+    c = pch()
+    if c == ")" | c == "," | c == ">" | c == "]" | c == ":" | c == "=" | c == ";" then do
+      ps = save
+      leave
+    end
+    op = binop_at(ps, blank)
+    if op \== "" then do
+      p = oprec(op)
+      if p < minp then do
+        ps = save
+        leave
+      end
+      ps = ps + length(op)
+      call skipb
+      if op == "**" | op == "!" then right0 = parse_expr(p)
+      else right0 = parse_expr(p + 1)
+      left0 = mk_binary(op, left0, right0)
+      iterate
+    end
+    if blank = 1 then do
+      if 4 < minp then do
+        ps = save
+        leave
+      end
+      right0 = parse_expr(5)
+      left0 = mk(N_CAT, left0, right0, "", 0)
+      iterate
+    end
+    ps = save
+    leave
+  end
+  return left0
+
+mk_binary: procedure = .int
+  arg op = .string, a = .int, b = .int
+  select
+    when op == "|" then return mk(N_ALT, a, b, "", 0)
+    when op == "." then return mk(N_COND, a, b, "", 0)
+    when op == "$" then return mk(N_IMM, a, b, "", 0)
+    when op == "?" then return mk(N_MATCH, a, b, "", 0)
+    when op == "!" then return mk(N_BIN, a, b, "**", 5)
+    when op == "+" then return mk(N_BIN, a, b, op, 1)
+    when op == "-" then return mk(N_BIN, a, b, op, 2)
+    when op == "*" then return mk(N_BIN, a, b, op, 3)
+    when op == "/" then return mk(N_BIN, a, b, op, 4)
+    otherwise nop
+  end
+  return mk(N_BIN, a, b, op, 5)
+
+parse_operand: procedure = .int
+  c = .string
+  x = .int
+  nd = .int
+  call skipb
+  c = pch()
+  if c == "-" | c == "+" then do
+    ps = ps + 1
+    x = parse_operand()
+    if c == "-" & nd_t[x] = N_INT then do
+      nd_i[x] = 0 - nd_i[x]
+      return x
+    end
+    if c == "-" & nd_t[x] = N_REAL then do
+      nd_r[x] = 0.0 - nd_r[x]
+      return x
+    end
+    return mk(N_UNARY, x, 0, c, 0)
+  end
+  if c == "?" | c == "~" | c == "\" then do
+    ps = ps + 1
+    x = parse_operand()
+    return mk(N_UNARY, x, 0, c, 0)
+  end
+  if c == "." then do
+    ps = ps + 1
+    x = parse_operand()
+    return mk(N_NAMEOF, x, 0, "", 0)
+  end
+  if c == "$" then do
+    ps = ps + 1
+    x = parse_operand()
+    return mk(N_INDIR, x, 0, "", 0)
+  end
+  if c == "*" then do
+    ps = ps + 1
+    x = parse_operand()
+    return mk(N_DEFER, x, 0, "", 0)
+  end
+  if c == "@" then do
+    ps = ps + 1
+    x = parse_operand()
+    return mk(N_CURSOR, x, 0, "", 0)
+  end
+  if c == "&" then do
+    x = ps + 1
+    do while x <= slen & isnamech(substr(src, x, 1)) = 1
+      x = x + 1
+    end
+    nd = mk(N_KW, 0, 0, upper(substr(src, ps + 1, x - ps - 1)), 0)
+    nd_i[nd] = kwcode(nd_s[nd])
+    ps = x
+    return nd
+  end
+  return parse_primary()
+
+parse_primary: procedure = .int
+  c = .string
+  q = .int
+  nd = .int
+  e = .int
+  s = .string
+  j = .int
+  isreal = .int
+  nm0 = .string
+  c = pch()
+  if c == "" then do
+    call pfail "expression expected"
+    return mk(N_STR, 0, 0, "", 0)
+  end
+  if c == "'" | c == '"' then do
+    q = pos(c, src, ps + 1)
+    if q = 0 then do
+      call pfail "unterminated string"
+      ps = slen + 1
+      return mk(N_STR, 0, 0, "", 0)
+    end
+    s = substr(src, ps + 1, q - ps - 1)
+    ps = q + 1
+    nd = mk(N_STR, 0, 0, s, 0)
+    return postfix(nd)
+  end
+  if isdig(c) = 1 then do
+    j = ps
+    isreal = 0
+    do while j <= slen & isdig(substr(src, j, 1)) = 1
+      j = j + 1
+    end
+    if j <= slen & substr(src, j, 1) == "." then do
+      isreal = 1
+      j = j + 1
+      do while j <= slen & isdig(substr(src, j, 1)) = 1
+        j = j + 1
+      end
+    end
+    if j <= slen & upper(substr(src, j, 1)) == "E" then do
+      e = j + 1
+      if e <= slen & (substr(src, e, 1) == "+" | substr(src, e, 1) == "-") then e = e + 1
+      if e <= slen & isdig(substr(src, e, 1)) = 1 then do
+        isreal = 1
+        j = e
+        do while j <= slen & isdig(substr(src, j, 1)) = 1
+          j = j + 1
+        end
+      end
+    end
+    s = substr(src, ps, j - ps)
+    ps = j
+    if isreal = 1 then do
+      nd = mk(N_REAL, 0, 0, "", 0)
+      nd_r[nd] = numtofloat(s)
+    end
+    else nd = mk(N_INT, 0, 0, "", s as .int)
+    return nd
+  end
+  if c == "(" then do
+    ps = ps + 1
+    nd = parse_expr(1)
+    call skipb
+    if pch() == ")" then ps = ps + 1
+    else call pfail "missing )"
+    return postfix(nd)
+  end
+  if isalpha(c) = 1 then do
+    j = ps
+    do while j <= slen & isnamech(substr(src, j, 1)) = 1
+      j = j + 1
+    end
+    nm0 = substr(src, ps, j - ps)
+    if fold = 1 then nm0 = upper(nm0)
+    ps = j
+    if pch() == "(" then do
+      ps = ps + 1
+      nd = parse_call(nm0)
+    end
+    else nd = mk(N_VAR, vslot(nm0), 0, nm0, 0)
+    return postfix(nd)
+  end
+  call pfail "unexpected '" || c || "'"
+  ps = slen + 1
+  return mk(N_STR, 0, 0, "", 0)
+
+numtofloat: procedure = .float
+  arg w = .string
+  t = .string
+  p = .int
+  t = upper(w)
+  if left(t, 1) == "." then t = "0" || t
+  p = pos(".", t)
+  if p > 0 then do
+    if p = length(t) then t = t || "0"
+    else if substr(t, p + 1, 1) == "E" then t = left(t, p) || "0" || substr(t, p + 1)
+  end
+  return t as .float
+
+/* function call: name '(' already consumed */
+parse_call: procedure = .int
+  arg nme = .string
+  nd = .int
+  na = .int
+  first = .int
+  a = .int
+  c = .string
+  first = nal + 1
+  na = 0
+  /* arguments are collected in a temporary list, then copied (nested calls) */
+  tmp = .int[]
+  do forever
+    call skipb
+    c = pch()
+    if c == ")" then do
+      if na > 0 then do
+        na = na + 1
+        tmp[na] = mk(N_STR, 0, 0, "", 0)
+      end
+      ps = ps + 1
+      leave
+    end
+    if c == "," then do
+      na = na + 1
+      tmp[na] = mk(N_STR, 0, 0, "", 0)
+      ps = ps + 1
+      iterate
+    end
+    if perr = 1 | ps > slen then do
+      call pfail "missing ) in call to " || nme
+      leave
+    end
+    a = parse_expr(1)
+    na = na + 1
+    tmp[na] = a
+    call skipb
+    c = pch()
+    if c == "," then do
+      ps = ps + 1
+      call skipb
+      if pch() == ")" then do
+        na = na + 1
+        tmp[na] = mk(N_STR, 0, 0, "", 0)
+        ps = ps + 1
+        leave
+      end
+    end
+    else if c == ")" then do
+      ps = ps + 1
+      leave
+    end
+    else do
+      call pfail "bad argument list"
+      leave
+    end
+  end
+  first = nal + 1
+  do a = 1 to na
+    nal = nal + 1
+    al[nal] = tmp[a]
+  end
+  nd = mk(N_CALL, first, na, nme, wordpos(nme, bfn))
+  return nd
+
+postfix: procedure = .int
+  arg base = .int
+  nd = .int
+  c = .string
+  cl = .string
+  na = .int
+  first = .int
+  a = .int
+  tmp = .int[]
+  nd = base
+  do forever
+    c = pch()
+    if c \== "<" & c \== "[" then leave
+    if c == "<" then cl = ">"
+    else cl = "]"
+    ps = ps + 1
+    na = 0
+    do forever
+      call skipb
+      if pch() == cl then do
+        if na = 0 then do
+          na = 1
+          tmp[1] = mk(N_STR, 0, 0, "", 0)
+        end
+        ps = ps + 1
+        leave
+      end
+      if perr = 1 | ps > slen then do
+        call pfail "missing subscript close"
+        leave
+      end
+      a = parse_expr(1)
+      na = na + 1
+      tmp[na] = a
+      call skipb
+      if pch() == "," then ps = ps + 1
+    end
+    first = nal + 1
+    do a = 1 to na
+      nal = nal + 1
+      al[nal] = tmp[a]
+    end
+    nd = mk(N_INDEX, first, na, "", nd)
+    if perr = 1 then leave
+  end
+  return nd

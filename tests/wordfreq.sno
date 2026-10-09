@@ -1,0 +1,16 @@
+* Word frequency: reads text from stdin (or the data after END)
+        WORD = SPAN('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+        SEP = BREAK('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+        COUNT = TABLE()
+READ    LINE = INPUT                         :F(DONE)
+        LINE = REPLACE(LINE,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')
+NEXT    LINE SEP =
+        LINE WORD . W =                      :F(READ)
+        COUNT<W> = COUNT<W> + 1              :(NEXT)
+DONE    T = SORT(COUNT)
+        I = 1
+PRINT   OUTPUT = RPAD(T<I,1>,12) LPAD(T<I,2>,3)   :F(END)
+        I = I + 1                            :(PRINT)
+END
+the quick brown fox jumps over the lazy dog
+The dog barks; the fox runs away.

@@ -1,0 +1,45 @@
+* pattern tests
+        S = 'the quick brown fox jumps'
+        S 'quick' = 'slow'
+        OUTPUT = S
+        S ('brown' | 'red') . C
+        OUTPUT = 'C=' C
+        S SPAN('abcdefghijklmnopqrstuvwxyz') . W ' ' REM . R
+        OUTPUT = W '/' R
+        'a,b,c' BREAK(',') . A ',' BREAK(',') . B ',' REM . C2
+        OUTPUT = A B C2
+        X = 'hello world'
+        X POS(0) LEN(5) . F
+        OUTPUT = F
+        X ARB . P1 'o' ARB . P2 RPOS(0)
+        OUTPUT = P1 '|' P2
+        'aaab' ARBNO('a') . Q 'b'
+        OUTPUT = Q
+        '(a(b)c)d' BAL . BB
+        OUTPUT = BB
+        T = TABLE()
+        T<'x'> = 10
+        T<'y'> = 20
+        OUTPUT = T<'x'> + T<'y'>
+        A = ARRAY(3, 0)
+        A<2> = 7
+        OUTPUT = A<1> A<2> A<3>
+        DEFINE('FACT(N)')                 :(M1)
+FACT    FACT = EQ(N,0) 1                  :S(RETURN)
+        FACT = N * FACT(N - 1)            :(RETURN)
+M1      OUTPUT = FACT(10)
+        DATA('NODE(VAL,NEXT)')
+        N1 = NODE(1)
+        NEXT(N1) = NODE(2)
+        OUTPUT = VAL(NEXT(N1))
+        OUTPUT = DUPL('ab',3) SIZE('hello') REVERSE('abc')
+        OUTPUT = 1.5 + 1
+        OUTPUT = 10 / 4
+        OUTPUT = 10. / 4
+        I = 0
+L       I = I + 1
+        OUTPUT = LT(I,3) 'i=' I          :S(L)
+        OUTPUT = IDENT('a','a') 'same'
+        OUTPUT = DIFFER('a','a') 'diff'   :F(NOD)
+NOD     OUTPUT = 'done'
+END

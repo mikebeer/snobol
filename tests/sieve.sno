@@ -1,0 +1,16 @@
+* Sieve of Eratosthenes up to 100
+        N = 100
+        A = ARRAY(N,1)
+        I = 2
+OUTER   GT(I * I,N)                          :S(PRINT)
+        IDENT(A<I>,1)                        :F(INC)
+        J = I * I
+MARK    A<J> = 0
+        J = J + I
+        LE(J,N)                              :S(MARK)
+INC     I = I + 1                            :(OUTER)
+PRINT   I = 2
+LOOP    OUTPUT = IDENT(A<I>,1) I  :F(SKIP)
+SKIP    I = I + 1
+        LE(I,N)                              :S(LOOP)
+END

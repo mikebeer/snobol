@@ -1,0 +1,398 @@
+
+/* ---------------------------------------------------------------------
+   Pattern construction
+   --------------------------------------------------------------------- */
+pnode: procedure = .int
+  arg t = .int, a = .int, b = .int, s = .string, i = .int
+  npn = npn + 1
+  pn_t[npn] = t
+  pn_a[npn] = a
+  pn_b[npn] = b
+  pn_s[npn] = s
+  pn_i[npn] = i
+  return npn
+
+/* registers -> pattern root (0 on error) */
+topat: procedure = .int
+  select
+    when rt = 3 then return ri
+    when rt = 0 then return pnode(PT_LIT, 0, 0, rs, 0)
+    when rt = 1 then return pnode(PT_LIT, 0, 0, rstr(), 0)
+    when rt = 2 then return pnode(PT_LIT, 0, 0, rstr(), 0)
+    when rt = 8 then return pnode(PT_DEFER, 0, 0, "", ri)
+    otherwise nop
+  end
+  call snerr 4, "Illegal data type for pattern"
+  return 0
+
+newcell: procedure = .int
+  arg nd = .int, x = .int, y = .int, nx = .int
+  kn_n = kn_n + 1
+  kn_node[kn_n] = nd
+  kn_x[kn_n] = x
+  kn_y[kn_n] = y
+  kn_next[kn_n] = nx
+  return kn_n
+
+push_choice: procedure = .void
+  arg nd = .int, p = .int, kt = .int, x = .int
+  csp = csp + 1
+  cs_node[csp] = nd
+  cs_pos[csp] = p
+  cs_kont[csp] = kt
+  cs_asg[csp] = asgn_n
+  cs_x[csp] = x
+  return
+
+/* next balanced end after prev, for a BAL match starting at start (0 if none) */
+bal_next: procedure = .int
+  arg start = .int, prev = .int
+  j = .int
+  depth0 = .int
+  c = .string
+  depth0 = 0
+  do j = start + 1 to prev
+    c = substr(ms, j, 1)
+    if c == "(" then depth0 = depth0 + 1
+    else if c == ")" then depth0 = depth0 - 1
+  end
+  do j = prev + 1 to mlen
+    c = substr(ms, j, 1)
+    if c == "(" then depth0 = depth0 + 1
+    else if c == ")" then do
+      depth0 = depth0 - 1
+      if depth0 < 0 then return 0
+    end
+    if depth0 = 0 then return j
+  end
+  return 0
+
+/* ---------------------------------------------------------------------
+   The matcher: try to match the pattern at cursor s0.
+   returns 1 on success (end cursor in mend), 0 otherwise
+   --------------------------------------------------------------------- */
+match_at: procedure = .int
+  arg root = .int, s0 = .int
+  node = .int
+  pos = .int
+  kont = .int
+  mode = .int
+  csp0 = .int
+  kn0 = .int
+  asg0 = .int
+  x = .int
+  md = .int
+  ag = .int
+  t = .int
+  n = .int
+  q = .int
+  cell = .int
+  ky = .int
+  nm = .int
+  s = .string
+  c = .string
+  j = .int
+  csp0 = csp
+  kn0 = kn_n
+  asg0 = asgn_n
+  node = root
+  pos = s0
+  kont = 0
+  mode = 0
+  do forever
+    if mode = 2 then do
+      if csp <= csp0 | abort_m = 1 | halted = 1 then do
+        csp = csp0
+        kn_n = kn0
+        asgn_n = asg0
+        return 0
+      end
+      node = cs_node[csp]
+      pos = cs_pos[csp]
+      kont = cs_kont[csp]
+      asgn_n = cs_asg[csp]
+      x = cs_x[csp]
+      csp = csp - 1
+      md = x // 16
+      ag = x % 16
+      select
+        when md = 0 then mode = 0
+        when md = 1 then do
+          if pos + ag <= mlen then do
+            if pos + ag < mlen then call push_choice node, pos, kont, (ag + 1) * 16 + 1
+            pos = pos + ag
+            mode = 1
+          end
+        end
+        when md = 2 then do
+          kont = newcell(node, pos, K_ARBNOCHK, kont)
+          node = pn_a[node]
+          mode = 0
+        end
+        when md = 4 then do
+          q = verify(ms, pn_s[node], "M", pos + 2)
+          if q > 0 then do
+            pos = q - 1
+            call push_choice node, pos, kont, pos * 16 + 4
+            mode = 1
+          end
+        end
+        when md = 5 then abort_m = 1
+        when md = 6 then do
+          q = bal_next(pos, ag)
+          if q > 0 then do
+            call push_choice node, pos, kont, q * 16 + 6
+            pos = q
+            mode = 1
+          end
+        end
+        otherwise nop
+      end
+      iterate
+    end
+    if mode = 1 then do
+      if kont = 0 then do
+        mend = pos
+        do j = asg0 + 1 to asgn_n
+          nm = as_nm[j]
+          call setstr substr(ms, as_a[j] + 1, as_b[j] - as_a[j])
+          call store_nm nm_k[nm], nm_a[nm]
+        end
+        csp = csp0
+        kn_n = kn0
+        asgn_n = asg0
+        return 1
+      end
+      cell = kont
+      kont = kn_next[cell]
+      ky = kn_y[cell]
+      if ky = 0 then do
+        node = kn_node[cell]
+        mode = 0
+        iterate
+      end
+      select
+        when ky = K_CONDEND then do
+          asgn_n = asgn_n + 1
+          as_nm[asgn_n] = pn_i[kn_node[cell]]
+          as_a[asgn_n] = kn_x[cell]
+          as_b[asgn_n] = pos
+        end
+        when ky = K_IMMEND then do
+          nm = pn_i[kn_node[cell]]
+          call setstr substr(ms, kn_x[cell] + 1, pos - kn_x[cell])
+          call store_nm nm_k[nm], nm_a[nm]
+          if halted = 1 then mode = 2
+        end
+        when ky = K_ARBNOCHK then do
+          if pos = kn_x[cell] then mode = 2
+          else do
+            node = kn_node[cell]
+            mode = 0
+          end
+        end
+        when ky = K_FENCEEND then csp = kn_x[cell]
+        otherwise nop
+      end
+      iterate
+    end
+    t = pn_t[node]
+    select
+      when t = PT_LIT then do
+        s = pn_s[node]
+        n = length(s)
+        if n = 0 then mode = 1
+        else if pos + n <= mlen & substr(ms, pos + 1, n) == s then do
+          pos = pos + n
+          mode = 1
+        end
+        else mode = 2
+      end
+      when t = PT_CAT then do
+        kont = newcell(pn_b[node], 0, 0, kont)
+        node = pn_a[node]
+      end
+      when t = PT_ALT then do
+        call push_choice pn_b[node], pos, kont, 0
+        node = pn_a[node]
+      end
+      when t = PT_ANY then do
+        if pos < mlen & pos(substr(ms, pos + 1, 1), pn_s[node]) > 0 then do
+          pos = pos + 1
+          mode = 1
+        end
+        else mode = 2
+      end
+      when t = PT_NOTANY then do
+        if pos < mlen & pos(substr(ms, pos + 1, 1), pn_s[node]) = 0 then do
+          pos = pos + 1
+          mode = 1
+        end
+        else mode = 2
+      end
+      when t = PT_SPAN then do
+        q = verify(ms, pn_s[node], "N", pos + 1)
+        if q = 0 then q = mlen + 1
+        n = q - (pos + 1)
+        if n > 0 then do
+          pos = pos + n
+          mode = 1
+        end
+        else mode = 2
+      end
+      when t = PT_BREAK | t = PT_BREAKX then do
+        q = 0
+        if pos < mlen then q = verify(ms, pn_s[node], "M", pos + 1)
+        if q = 0 then mode = 2
+        else do
+          pos = q - 1
+          if t = PT_BREAKX then call push_choice node, pos, kont, pos * 16 + 4
+          mode = 1
+        end
+      end
+      when t = PT_LEN then do
+        n = pn_i[node]
+        if n >= 0 & pos + n <= mlen then do
+          pos = pos + n
+          mode = 1
+        end
+        else mode = 2
+      end
+      when t = PT_POS then do
+        if pos = pn_i[node] then mode = 1
+        else mode = 2
+      end
+      when t = PT_RPOS then do
+        if pos = mlen - pn_i[node] then mode = 1
+        else mode = 2
+      end
+      when t = PT_TAB then do
+        n = pn_i[node]
+        if n >= pos & n <= mlen then do
+          pos = n
+          mode = 1
+        end
+        else mode = 2
+      end
+      when t = PT_RTAB then do
+        n = mlen - pn_i[node]
+        if n >= pos & n >= 0 then do
+          pos = n
+          mode = 1
+        end
+        else mode = 2
+      end
+      when t = PT_REM then do
+        pos = mlen
+        mode = 1
+      end
+      when t = PT_ARB then do
+        if pos < mlen then call push_choice node, pos, kont, 17
+        mode = 1
+      end
+      when t = PT_BAL then do
+        q = bal_next(pos, pos)
+        if q = 0 then mode = 2
+        else do
+          call push_choice node, pos, kont, q * 16 + 6
+          pos = q
+          mode = 1
+        end
+      end
+      when t = PT_FAIL then mode = 2
+      when t = PT_ABORT then do
+        abort_m = 1
+        mode = 2
+      end
+      when t = PT_FENCE then do
+        call push_choice node, pos, kont, 5
+        mode = 1
+      end
+      when t = PT_FENCEP then do
+        kont = newcell(0, csp, K_FENCEEND, kont)
+        node = pn_a[node]
+      end
+      when t = PT_SUCCEED then do
+        call push_choice node, pos, kont, 0
+        mode = 1
+      end
+      when t = PT_ARBNO then do
+        call push_choice node, pos, kont, 2
+        mode = 1
+      end
+      when t = PT_COND then do
+        kont = newcell(node, pos, K_CONDEND, kont)
+        node = pn_a[node]
+      end
+      when t = PT_IMM then do
+        kont = newcell(node, pos, K_IMMEND, kont)
+        node = pn_a[node]
+      end
+      when t = PT_CURSOR then do
+        nm = pn_i[node]
+        call setint pos
+        call store_nm nm_k[nm], nm_a[nm]
+        if halted = 1 then mode = 2
+        else mode = 1
+      end
+      when t = PT_DEFER then do
+        call eval_node pn_i[node]
+        if fail = 1 then do
+          if halted = 0 then fail = 0
+          mode = 2
+        end
+        else do
+          q = topat()
+          if q = 0 then mode = 2
+          else node = q
+        end
+      end
+      when t = PT_EMPTY then mode = 1
+      otherwise mode = 2
+    end
+  end
+  return 0
+
+/* match the pattern (root) against string subj.
+   returns 1/0; the matched region is [mstart, mend) */
+pat_match: procedure = .int
+  arg subj = .string, root = .int
+  sv_ms = .string
+  sv_len = .int
+  sv_st = .int
+  sv_en = .int
+  sv_ab = .int
+  s0 = .int
+  ok = .int
+  rs0 = .int
+  re0 = .int
+  sv_ms = ms
+  sv_len = mlen
+  sv_st = mstart
+  sv_en = mend
+  sv_ab = abort_m
+  ms = subj
+  mlen = length(subj)
+  abort_m = 0
+  ok = 0
+  rs0 = 0
+  re0 = 0
+  s0 = 0
+  do while s0 <= mlen
+    ok = match_at(root, s0)
+    if ok = 1 then do
+      rs0 = s0
+      re0 = mend
+      leave
+    end
+    if abort_m = 1 | halted = 1 | kw_anchor \= 0 then leave
+    s0 = s0 + 1
+  end
+  ms = sv_ms
+  mlen = sv_len
+  abort_m = sv_ab
+  mstart = rs0
+  if ok = 1 then mend = re0
+  else mend = sv_en
+  if ok = 0 then mstart = sv_st
+  return ok

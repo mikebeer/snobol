@@ -1,0 +1,247 @@
+/* =========================================================================
+   SNOBOL.CREXX  --  a SNOBOL4 interpreter written in CREXX (Level B)
+
+   Usage:
+       crexx snobol.crexx -args [-f] program.sno
+   Options:  -f   fold identifiers to upper case (like CSNOBOL4 -f)
+   Data lines that follow the END statement are read by INPUT before stdin.
+   ========================================================================= */
+options levelb numeric_classic
+import rxfnsb
+import rxfloat
+import _rxsysb
+@@EXPOSE@@
+
+arg av = .string[]
+call init
+fname = ""
+ia = 1
+do while ia <= av.0
+  oa = av[ia]
+  if fname == "" & left(oa, 1) == "-" & length(oa) > 1 then do
+    uo = upper(oa)
+    if uo == "-F" then fold = 1
+    else if uo == "-H" then do
+      say "usage: crexx snobol.crexx -args [-f] program.sno"
+      exit 0
+    end
+    else do
+      say "snobol: unknown option" oa
+      exit 1
+    end
+  end
+  else if fname == "" then fname = oa
+  ia = ia + 1
+end
+if fname == "" then do
+  say "usage: crexx snobol.crexx -args [-f] program.sno"
+  exit 1
+end
+ok = load_program(fname)
+if ok = 0 then exit 1
+call run_program
+call flush_out
+exit rc_exit
+
+/* ---------------------------------------------------------------------
+   init: declare and initialise all shared state
+   --------------------------------------------------------------------- */
+init: procedure = .void
+  fold = 0
+  rc_exit = 0
+  h_out = _open("stdout", "w")
+  h_in = _open("stdin", "r")
+  h_err = _open("stderr", "w")
+  /* ---- source / statements ---- */
+  nst = 0
+  st_label = .string[]
+  st_subj = .int[]
+  st_pat = .int[]
+  st_repl = .int[]
+  st_hasrep = .int[]
+  st_gs = .int[]
+  st_gf = .int[]
+  st_gu = .int[]
+  st_line = .int[]
+  labels = .stem()
+  inq_n = 0
+  inq_p = 1
+  inq = .string[]
+  /* ---- parse state ---- */
+  src = ""
+  ps = 1
+  slen = 0
+  perr = 0
+  perr_msg = ""
+  cur_line = 0
+  /* ---- AST ---- */
+  nn = 0
+  nd_t = .int[]
+  nd_a = .int[]
+  nd_b = .int[]
+  nd_s = .string[]
+  nd_i = .int[]
+  nd_r = .float[]
+  nal = 0
+  al = .int[]
+  /* ---- variables ---- */
+  vmap = .stem()
+  nv = 0
+  v_name = .string[]
+  vt = .int[]
+  vs = .string[]
+  vi = .int[]
+  vr = .float[]
+  vfl = .int[]
+  v_unit = .int[]
+  /* ---- element pool (arrays, tables, data objects) ---- */
+  ne = 0
+  et = .int[]
+  es = .string[]
+  ei = .int[]
+  er = .float[]
+  ek = .string[]
+  enx = .int[]
+  /* ---- arrays ---- */
+  nar = 0
+  ar_base = .int[]
+  ar_nd = .int[]
+  ar_d0 = .int[]
+  ndm = 0
+  dm_lo = .int[]
+  dm_hi = .int[]
+  ar_proto = .string[]
+  /* ---- tables ---- */
+  ntb = 0
+  tb_head = .int[]
+  tb_n = .int[]
+  tb_map = .stem()
+  /* ---- data types and objects ---- */
+  nty = 0
+  nflds = 0
+  ty_name = .string[]
+  ty_nf = .int[]
+  ty_fld = .string[]
+  ty_f0 = .int[]
+  tymap = .stem()
+  fldmap = .stem()
+  nob = 0
+  ob_ty = .int[]
+  ob_base = .int[]
+  /* ---- names ---- */
+  nnm = 0
+  nm_k = .int[]
+  nm_a = .int[]
+  /* ---- code / expression values ---- */
+  ncd = 0
+  cd_start = .int[]
+  /* ---- value registers ---- */
+  rt = 0
+  rs = ""
+  ri = 0
+  rr = 0.0
+  fail = 0
+  err_flag = 0
+  err_code = 0
+  err_msg = ""
+  halted = 0
+  /* ---- argument stack ---- */
+  ab_t = .int[]
+  ab_s = .string[]
+  ab_i = .int[]
+  ab_r = .float[]
+  ab_cnt = 0
+  /* ---- patterns ---- */
+  npn = 0
+  pn_t = .int[]
+  pn_a = .int[]
+  pn_b = .int[]
+  pn_s = .string[]
+  pn_i = .int[]
+  /* ---- matcher state ---- */
+  ms = ""
+  mlen = 0
+  mstart = 0
+  mend = 0
+  csp = 0
+  cs_node = .int[]
+  cs_pos = .int[]
+  cs_kont = .int[]
+  cs_asg = .int[]
+  cs_x = .int[]
+  kn_n = 0
+  kn_node = .int[]
+  kn_x = .int[]
+  kn_y = .int[]
+  kn_next = .int[]
+  asgn_n = 0
+  as_nm = .int[]
+  as_a = .int[]
+  as_b = .int[]
+  abort_m = 0
+  /* ---- functions ---- */
+  nfn = 0
+  nfv = 0
+  fnmap = .stem()
+  fn_name = .string[]
+  fn_entry = .string[]
+  fn_nargs = .int[]
+  fn_nloc = .int[]
+  fn_vars = .int[]
+  fn_first = .int[]
+  fnalias = .stem()
+  nsave = 0
+  sv_t = .int[]
+  sv_s = .string[]
+  sv_i = .int[]
+  sv_r = .float[]
+  depth = 0
+  /* ---- keywords ---- */
+  kw_anchor = 0
+  kw_trim = 0
+  kw_fullscan = 0
+  kw_errlimit = 0
+  kw_errtype = 0
+  kw_stcount = 0
+  kw_stlimit = -1
+  kw_stno = 0
+  kw_maxlngth = 5000000
+  kw_fnclevel = 0
+  kw_lastno = 0
+  kw_trace = 0
+  kw_ftrace = 0
+  kw_code = 0
+  cur_st = 0
+  /* ---- I/O ---- */
+  outunit = .int[]
+  inunit = .int[]
+  ounit_var = .stem()
+  iunit_var = .stem()
+  io_eof = .int[]
+  /* ---- misc ---- */
+  rnd_state = 1013904223
+  lv_k = 0
+  lv_a = 0
+  nv_i = 0
+  nv_r = 0.0
+  ou_h = .int[]
+  ou_m = .int[]
+  ou_e = .int[]
+  ou_n = .string[]
+  cur_fn = 0
+  srt_t = .int[]
+  srt_s = .string[]
+  srt_i = .int[]
+  srt_r = .float[]
+  srt_p = .int[]
+  srt_v = .int[]
+  evc = .stem()
+  endpc = 0
+  t0 = 0
+  ret_code = 0
+  trace_on = 0
+  bfn = " ABS ANY APPLY ARB ARBNO ARG ARRAY ATAN BACKSPACE BAL BREAK BREAKX CHAR CHOP CLEAR CODE COLLECT CONVERT COPY COS DATA DATATYPE DATE DEFINE DETACH DIFFER DUMP DUPL EJECT ENDFILE EQ EVAL EXIT EXP FENCE FIELD GE GT HOST IDENT INPUT INTEGER ITEM LE LEN LEQ LGE LGT LLE LLT LN LNE LOAD LOCAL LPAD LT NE NOTANY OPSYN OUTPUT POS PROTOTYPE REMDR REPLACE REVERSE REWIND RPAD RPOS RSORT RTAB SET SIN SIZE SORT SPAN SQRT STOPTR SUBSTR TAB TABLE TAN TIME TRACE TRIM UNLOAD REAL RANDOM SUCCEED FAIL ABORT REM "
+  /* predefined variables */
+  z_i = 0
+  call def_globals
+  return

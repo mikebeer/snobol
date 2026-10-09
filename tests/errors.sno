@@ -1,0 +1,14 @@
+* errors are fatal unless &ERRLIMIT is set
+        &ERRLIMIT = 3
+        X = 1 / 0                         :S(BAD)F(OK1)
+BAD     OUTPUT = 'no failure'             :(OK2)
+OK1     OUTPUT = 'division failed, errtype ' &ERRTYPE
+OK2     X = 'abc' + 1                     :F(OK3)
+OK3     OUTPUT = 'conversion failed ' &ERRTYPE
+        A = ARRAY(3)
+        OUTPUT = A<9>                     :F(OK4)
+OK4     OUTPUT = 'subscript fail'
+        &ERRLIMIT = 0
+        FOO(1)
+        OUTPUT = 'not reached'
+END

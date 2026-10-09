@@ -1,0 +1,17 @@
+* Convert numbers to Roman numerals
+        DEFINE('ROMAN(N)R')
+        VALS = '1000,900,500,400,100,90,50,40,10,9,5,4,1,'
+        SYMS = 'M,CM,D,CD,C,XC,L,XL,X,IX,V,IV,I,'
+        I = 1990                             :(TEST)
+ROMAN   VS = VALS
+        SS = SYMS
+        ROMAN = ''
+R1      VS BREAK(',') . V ',' = 
+        SS BREAK(',') . S ',' =              :F(RETURN)
+R2      GE(N,V)                              :F(R1)
+        ROMAN = ROMAN S
+        N = N - V                            :(R2)
+TEST    OUTPUT = I ' = ' ROMAN(I)
+        I = I + 1
+        LE(I,1994)                           :S(TEST)
+END
