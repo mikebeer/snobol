@@ -10,22 +10,25 @@ options levelb numeric_classic
 import rxfnsb
 import rxfloat
 import _rxsysb
-namespace snobol expose fold rc_exit h_out h_in h_err nst st_label st_subj,
-   st_pat st_repl st_hasrep st_gs st_gf st_gu st_line labels inq_n inq_p,
-   inq src ps slen perr perr_msg cur_line nn nd_t nd_a nd_b nd_s nd_i nd_r,
-   nal al vmap nv v_name vt vs vi vr vfl v_unit ne et es ei er ek enx nar,
-   ar_base ar_nd ar_d0 ndm dm_lo dm_hi ar_proto ntb tb_head tb_n tb_map nty,
-   nflds ty_name ty_nf ty_fld ty_f0 tymap fldmap nob ob_ty ob_base nnm nm_k,
-   nm_a ncd cd_start rt rs ri rr fail err_flag err_code err_msg halted ab_t,
-   ab_s ab_i ab_r ab_cnt npn pn_t pn_a pn_b pn_s pn_i ms mlen mstart mend,
-   csp cs_node cs_pos cs_kont cs_asg cs_x kn_n kn_node kn_x kn_y kn_next,
-   asgn_n as_nm as_a as_b abort_m nfn nfv fnmap fn_name fn_entry fn_nargs,
-   fn_nloc fn_vars fn_first fnalias nsave sv_t sv_s sv_i sv_r depth,
-   kw_anchor kw_trim kw_fullscan kw_errlimit kw_errtype kw_stcount,
-   kw_stlimit kw_stno kw_maxlngth kw_fnclevel kw_lastno kw_trace kw_ftrace,
-   kw_code cur_st outunit inunit ounit_var iunit_var io_eof rnd_state lv_k,
-   lv_a nv_i nv_r ou_h ou_m ou_e ou_n cur_fn srt_t srt_s srt_i srt_r srt_p,
-   srt_v evc endpc t0 ret_code trace_on bfn
+import cretext
+import crenum
+import creio
+namespace snobol expose fold rc_exit h_in nst st_label st_subj st_pat,
+   st_repl st_hasrep st_gs st_gf st_gu st_line labels inq_n inq_p inq src,
+   ps slen perr perr_msg cur_line nn nd_t nd_a nd_b nd_s nd_i nd_r nal al,
+   vmap nv v_name vt vs vi vr vfl v_unit ne et es ei er ek enx nar ar_base,
+   ar_nd ar_d0 ndm dm_lo dm_hi ar_proto ntb tb_head tb_n tb_map nty nflds,
+   ty_name ty_nf ty_fld ty_f0 tymap fldmap nob ob_ty ob_base nnm nm_k nm_a,
+   ncd cd_start rt rs ri rr fail err_flag err_code err_msg halted ab_t ab_s,
+   ab_i ab_r ab_cnt npn pn_t pn_a pn_b pn_s pn_i ms mlen mstart mend csp,
+   cs_node cs_pos cs_kont cs_asg cs_x kn_n kn_node kn_x kn_y kn_next asgn_n,
+   as_nm as_a as_b abort_m nfn nfv fnmap fn_name fn_entry fn_nargs fn_nloc,
+   fn_vars fn_first fnalias nsave sv_t sv_s sv_i sv_r depth kw_anchor,
+   kw_trim kw_fullscan kw_errlimit kw_errtype kw_stcount kw_stlimit kw_stno,
+   kw_maxlngth kw_fnclevel kw_lastno kw_trace kw_ftrace kw_code cur_st,
+   outunit inunit ounit_var iunit_var io_eof rnd_state lv_k lv_a nv_i nv_r,
+   ou_h ou_m ou_e ou_n cur_fn srt_t srt_s srt_i srt_r srt_p srt_v evc endpc,
+   t0 ret_code trace_on bfn
 
 arg av = .string[]
 call init
@@ -55,7 +58,7 @@ end
 ok = load_program(fname)
 if ok = 0 then exit 1
 call run_program
-call flush_out
+call creio..flush
 exit rc_exit
 
 /* ---------------------------------------------------------------------
@@ -64,9 +67,7 @@ exit rc_exit
 init: procedure = .void
   fold = 0
   rc_exit = 0
-  h_out = _open("stdout", "w")
   h_in = _open("stdin", "r")
-  h_err = _open("stderr", "w")
   /* ---- source / statements ---- */
   nst = 0
   st_label = .string[]
@@ -475,19 +476,6 @@ isnamech: procedure = .int
   if c >>= "a" & c <<= "z" then return 1
   return 0
 
-isdig: procedure = .int
-  arg c = .string
-  if c == "" then return 0
-  if c >>= "0" & c <<= "9" then return 1
-  return 0
-
-isalpha: procedure = .int
-  arg c = .string
-  if c == "" then return 0
-  if c >>= "A" & c <<= "Z" then return 1
-  if c >>= "a" & c <<= "z" then return 1
-  return 0
-
 kwcode: procedure = .int
   arg nme = .string
   select
@@ -802,26 +790,26 @@ parse_primary: procedure = .int
     nd = mk(1, 0, 0, s, 0)
     return postfix(nd)
   end
-  if isdig(c) = 1 then do
+  if cretext..isdigit(c) = 1 then do
     j = ps
     isreal = 0
-    do while j <= slen & isdig(substr(src, j, 1)) = 1
+    do while j <= slen & cretext..isdigit(substr(src, j, 1)) = 1
       j = j + 1
     end
     if j <= slen & substr(src, j, 1) == "." then do
       isreal = 1
       j = j + 1
-      do while j <= slen & isdig(substr(src, j, 1)) = 1
+      do while j <= slen & cretext..isdigit(substr(src, j, 1)) = 1
         j = j + 1
       end
     end
     if j <= slen & upper(substr(src, j, 1)) == "E" then do
       e = j + 1
       if e <= slen & (substr(src, e, 1) == "+" | substr(src, e, 1) == "-") then e = e + 1
-      if e <= slen & isdig(substr(src, e, 1)) = 1 then do
+      if e <= slen & cretext..isdigit(substr(src, e, 1)) = 1 then do
         isreal = 1
         j = e
-        do while j <= slen & isdig(substr(src, j, 1)) = 1
+        do while j <= slen & cretext..isdigit(substr(src, j, 1)) = 1
           j = j + 1
         end
       end
@@ -830,7 +818,7 @@ parse_primary: procedure = .int
     ps = j
     if isreal = 1 then do
       nd = mk(3, 0, 0, "", 0)
-      nd_r[nd] = numtofloat(s)
+      nd_r[nd] = crenum..parsefloat(s)
     end
     else nd = mk(2, 0, 0, "", s as .int)
     return nd
@@ -843,7 +831,7 @@ parse_primary: procedure = .int
     else call pfail "missing )"
     return postfix(nd)
   end
-  if isalpha(c) = 1 then do
+  if cretext..isalpha(c) = 1 then do
     j = ps
     do while j <= slen & isnamech(substr(src, j, 1)) = 1
       j = j + 1
@@ -861,19 +849,6 @@ parse_primary: procedure = .int
   call pfail "unexpected '" || c || "'"
   ps = slen + 1
   return mk(1, 0, 0, "", 0)
-
-numtofloat: procedure = .float
-  arg w = .string
-  t = .string
-  p = .int
-  t = upper(w)
-  if left(t, 1) == "." then t = "0" || t
-  p = pos(".", t)
-  if p > 0 then do
-    if p = length(t) then t = t || "0"
-    else if substr(t, p + 1, 1) == "E" then t = left(t, p) || "0" || substr(t, p + 1)
-  end
-  return t as .float
 
 /* function call: name '(' already consumed */
 parse_call: procedure = .int
@@ -1025,7 +1000,6 @@ where_am_i: procedure = .string
 
 snerr: procedure = .void
   arg code = .int, msg = .string
-  rcx = .int
   emsg = .string
   fail = 1
   if kw_errlimit > 0 then do
@@ -1039,10 +1013,8 @@ snerr: procedure = .void
     err_flag = 1
     err_code = code
     err_msg = msg
-    assembler fflush rcx, h_out
     emsg = "snobol: error " || code || " at " || where_am_i() || ": " || msg || '0a'x
-    assembler fwrite h_err, emsg
-    assembler fflush rcx, h_err
+    call creio..err emsg
   end
   halted = 1
   rc_exit = 1
@@ -1053,8 +1025,7 @@ fmtreal: procedure = .string
   s = .string
   p = .int
   if x \= x then return "nan"
-  s = x as .string
-  s = translate(s, "E", "e")
+  s = crenum..realtext(x)
   p = pos("E", s)
   if p = 0 then do
     if pos(".", s) = 0 then s = s || "."
@@ -1116,7 +1087,7 @@ str2num: procedure = .int
   body = substr(s, p)
   if isreal = 0 & nd > 18 then isreal = 1
   if isreal = 1 then do
-    nv_r = numtofloat(body)
+    nv_r = crenum..parsefloat(body)
     if neg = 1 then nv_r = 0.0 - nv_r
     return 2
   end
@@ -1235,11 +1206,6 @@ ident_ab: procedure = .int
 /* ---------------------------------------------------------------------
    Output / input
    --------------------------------------------------------------------- */
-flush_out: procedure = .void
-  rcx = .int
-  assembler fflush rcx, h_out
-  return
-
 put_line: procedure = .void
   arg u = .int, txt = .string
   h = .int
@@ -1606,7 +1572,7 @@ key_load: procedure = .void
     when c == "I" then call setint b as .int
     when c == "R" then do
       rt = 2
-      rr = numtofloat(b)
+      rr = crenum..parsefloat(b)
     end
     when c == "P" then call setobj 3, b as .int
     when c == "A" then call setobj 4, b as .int
@@ -3778,9 +3744,9 @@ def_globals: procedure = .void
   ou_h[5] = h_in
   ou_m[5] = 1
   ou_e[5] = 0
-  ou_h[6] = h_out
+  ou_h[6] = creio..hout()
   ou_m[6] = 2
-  ou_h[7] = h_err
+  ou_h[7] = creio..herr()
   ou_m[7] = 2
   s = vslot("OUTPUT")
   vfl[s] = 1

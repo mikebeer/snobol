@@ -20,6 +20,17 @@ Data lines placed after the `END` statement are read by `INPUT` before stdin.
 
 The manual is in [`docs/SNOBOL-CREXX-Guide.pdf`](docs/SNOBOL-CREXX-Guide.pdf) (Word version: [`docs/SNOBOL-CREXX-Guide.docx`](docs/SNOBOL-CREXX-Guide.docx)).
 
+## CRE version
+
+This branch (`cre-port`) runs on the CREXX Language Environment
+([mikebeer/language_environment](https://github.com/mikebeer/language_environment)),
+included as the git submodule `cre`. Character classes (`cretext`), float literal
+parsing and float text (`crenum`) and the standard output and error streams
+(`creio`) come from CRE instead of private copies. Clone with
+`git clone --recurse-submodules`, or run `git submodule update --init`.
+The regression tests give the same results as before. As before, edit `src/`
+and run `python3 build.py` to regenerate `snobol.crexx`.
+
 ## What is supported
 
 * **Statements**: labels, `;` separators, `+`/`.` continuation lines, `*` comments,

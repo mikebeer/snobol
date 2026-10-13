@@ -10,6 +10,9 @@ options levelb numeric_classic
 import rxfnsb
 import rxfloat
 import _rxsysb
+import cretext
+import crenum
+import creio
 @@EXPOSE@@
 
 arg av = .string[]
@@ -40,7 +43,7 @@ end
 ok = load_program(fname)
 if ok = 0 then exit 1
 call run_program
-call flush_out
+call creio..flush
 exit rc_exit
 
 /* ---------------------------------------------------------------------
@@ -49,9 +52,7 @@ exit rc_exit
 init: procedure = .void
   fold = 0
   rc_exit = 0
-  h_out = _open("stdout", "w")
   h_in = _open("stdin", "r")
-  h_err = _open("stderr", "w")
   /* ---- source / statements ---- */
   nst = 0
   st_label = .string[]

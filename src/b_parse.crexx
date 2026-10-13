@@ -213,19 +213,6 @@ isnamech: procedure = .int
   if c >>= "a" & c <<= "z" then return 1
   return 0
 
-isdig: procedure = .int
-  arg c = .string
-  if c == "" then return 0
-  if c >>= "0" & c <<= "9" then return 1
-  return 0
-
-isalpha: procedure = .int
-  arg c = .string
-  if c == "" then return 0
-  if c >>= "A" & c <<= "Z" then return 1
-  if c >>= "a" & c <<= "z" then return 1
-  return 0
-
 kwcode: procedure = .int
   arg nme = .string
   select
@@ -540,26 +527,26 @@ parse_primary: procedure = .int
     nd = mk(N_STR, 0, 0, s, 0)
     return postfix(nd)
   end
-  if isdig(c) = 1 then do
+  if cretext..isdigit(c) = 1 then do
     j = ps
     isreal = 0
-    do while j <= slen & isdig(substr(src, j, 1)) = 1
+    do while j <= slen & cretext..isdigit(substr(src, j, 1)) = 1
       j = j + 1
     end
     if j <= slen & substr(src, j, 1) == "." then do
       isreal = 1
       j = j + 1
-      do while j <= slen & isdig(substr(src, j, 1)) = 1
+      do while j <= slen & cretext..isdigit(substr(src, j, 1)) = 1
         j = j + 1
       end
     end
     if j <= slen & upper(substr(src, j, 1)) == "E" then do
       e = j + 1
       if e <= slen & (substr(src, e, 1) == "+" | substr(src, e, 1) == "-") then e = e + 1
-      if e <= slen & isdig(substr(src, e, 1)) = 1 then do
+      if e <= slen & cretext..isdigit(substr(src, e, 1)) = 1 then do
         isreal = 1
         j = e
-        do while j <= slen & isdig(substr(src, j, 1)) = 1
+        do while j <= slen & cretext..isdigit(substr(src, j, 1)) = 1
           j = j + 1
         end
       end
@@ -568,7 +555,7 @@ parse_primary: procedure = .int
     ps = j
     if isreal = 1 then do
       nd = mk(N_REAL, 0, 0, "", 0)
-      nd_r[nd] = numtofloat(s)
+      nd_r[nd] = crenum..parsefloat(s)
     end
     else nd = mk(N_INT, 0, 0, "", s as .int)
     return nd
@@ -581,7 +568,7 @@ parse_primary: procedure = .int
     else call pfail "missing )"
     return postfix(nd)
   end
-  if isalpha(c) = 1 then do
+  if cretext..isalpha(c) = 1 then do
     j = ps
     do while j <= slen & isnamech(substr(src, j, 1)) = 1
       j = j + 1
@@ -599,19 +586,6 @@ parse_primary: procedure = .int
   call pfail "unexpected '" || c || "'"
   ps = slen + 1
   return mk(N_STR, 0, 0, "", 0)
-
-numtofloat: procedure = .float
-  arg w = .string
-  t = .string
-  p = .int
-  t = upper(w)
-  if left(t, 1) == "." then t = "0" || t
-  p = pos(".", t)
-  if p > 0 then do
-    if p = length(t) then t = t || "0"
-    else if substr(t, p + 1, 1) == "E" then t = left(t, p) || "0" || substr(t, p + 1)
-  end
-  return t as .float
 
 /* function call: name '(' already consumed */
 parse_call: procedure = .int

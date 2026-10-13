@@ -37,7 +37,6 @@ where_am_i: procedure = .string
 
 snerr: procedure = .void
   arg code = .int, msg = .string
-  rcx = .int
   emsg = .string
   fail = 1
   if kw_errlimit > 0 then do
@@ -51,10 +50,8 @@ snerr: procedure = .void
     err_flag = 1
     err_code = code
     err_msg = msg
-    assembler fflush rcx, h_out
     emsg = "snobol: error " || code || " at " || where_am_i() || ": " || msg || '0a'x
-    assembler fwrite h_err, emsg
-    assembler fflush rcx, h_err
+    call creio..err emsg
   end
   halted = 1
   rc_exit = 1
@@ -65,8 +62,7 @@ fmtreal: procedure = .string
   s = .string
   p = .int
   if x \= x then return "nan"
-  s = x as .string
-  s = translate(s, "E", "e")
+  s = crenum..realtext(x)
   p = pos("E", s)
   if p = 0 then do
     if pos(".", s) = 0 then s = s || "."
@@ -128,7 +124,7 @@ str2num: procedure = .int
   body = substr(s, p)
   if isreal = 0 & nd > 18 then isreal = 1
   if isreal = 1 then do
-    nv_r = numtofloat(body)
+    nv_r = crenum..parsefloat(body)
     if neg = 1 then nv_r = 0.0 - nv_r
     return 2
   end
@@ -247,11 +243,6 @@ ident_ab: procedure = .int
 /* ---------------------------------------------------------------------
    Output / input
    --------------------------------------------------------------------- */
-flush_out: procedure = .void
-  rcx = .int
-  assembler fflush rcx, h_out
-  return
-
 put_line: procedure = .void
   arg u = .int, txt = .string
   h = .int
@@ -618,7 +609,7 @@ key_load: procedure = .void
     when c == "I" then call setint b as .int
     when c == "R" then do
       rt = 2
-      rr = numtofloat(b)
+      rr = crenum..parsefloat(b)
     end
     when c == "P" then call setobj 3, b as .int
     when c == "A" then call setobj 4, b as .int

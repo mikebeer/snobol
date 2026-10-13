@@ -1,0 +1,3 @@
+[submodule "cre"]
+	path = cre
+	url = https://github.com/mikebeer/language_environment
