@@ -1,0 +1,6 @@
+fib(23) = 28657
+ack(2,3) = 9
+ack(3,3) = 61
+hanoi(15) moves: 32767
+sumto(1500) = 1125750
+permutations of 7: 5040

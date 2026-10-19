@@ -1,0 +1,47 @@
+* BENCH strings: building strings and pattern matching
+        S = ''
+        I = 0
+L1      I = I + 1
+        S = S 'word' I ' '
+        LT(I, 5000)                    :S(L1)
+        OUTPUT = 'length: ' SIZE(S)
+* count the words with a pattern loop
+        T = S
+        N = 0
+        SUMLEN = 0
+        W = SPAN('abcdefghijklmnopqrstuvwxyz0123456789')
+L2      T W . WD ' ' =                 :F(L3)
+        N = N + 1
+        SUMLEN = SUMLEN + SIZE(WD)
+        :(L2)
+L3      OUTPUT = 'words: ' N ' total letters: ' SUMLEN
+* search and replace
+        U = S
+        U 'word1' = 'W'
+        U 'word2' = 'WW'
+        OUTPUT = SUBSTR(U, 1, 30)
+        C = 0
+        V = S
+L4      V 'word' ARB . X ' ' =         :F(L5)
+        C = C + 1                      :(L4)
+L5      OUTPUT = 'matches: ' C
+* palindromes by reverse
+        P = 0
+        K = 0
+L6      K = K + 1
+        Z = K
+        IDENT(Z '', REVERSE(Z))        :F(L7)
+        P = P + 1
+L7      LT(K, 20000)                   :S(L6)
+        OUTPUT = 'palindromic numbers to 20000: ' P
+* BREAK/ARBNO/BAL
+        E = '(a(b)c)(d)((e))'
+        E BAL . B1
+        OUTPUT = 'first balanced: ' B1
+        Q = 'x=1,y=22,z=333,'
+        Q ARBNO(BREAK('=') '=' SPAN('0123456789') . D ',') RPOS(0)
+        OUTPUT = 'last value: ' D
+        DUP = DUPL('ab', 5000)
+        DUP ARB . F1 'ba' REM . F2
+        OUTPUT = SIZE(F1) ' ' SIZE(F2)
+END

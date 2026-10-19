@@ -1,0 +1,56 @@
+* BENCH loops: integer and real arithmetic in tight loops
+        N = 100000
+        I = 0
+        SUM = 0
+L1      I = I + 1
+        SUM = SUM + REMDR(I * I, 7)
+        LT(I, N)                       :S(L1)
+        OUTPUT = 'sum of squares mod 7: ' SUM
+* collatz steps for 1..2000
+        M = 0
+        BEST = 0
+        K = 0
+L2      K = K + 1
+        X = K
+        C = 0
+L3      EQ(X, 1)                       :S(L4)
+        X = EQ(REMDR(X, 2), 0) X / 2   :S(L3A)
+        X = 3 * X + 1
+L3A     C = C + 1                      :(L3)
+L4      GT(C, M)                       :F(L5)
+        M = C
+        BEST = K
+L5      LT(K, 2000)                    :S(L2)
+        OUTPUT = 'longest collatz under 2000: ' BEST ' (' M ' steps)'
+* real arithmetic: harmonic sum and a power series
+        H = 0.0
+        J = 0
+L6      J = J + 1
+        H = H + 1.0 / J
+        LT(J, 20000)                   :S(L6)
+        OUTPUT = 'harmonic(20000) = ' H
+        E = 1.0
+        T = 1.0
+        F = 0
+L7      F = F + 1
+        T = T / F
+        E = E + T
+        LT(F, 15)                      :S(L7)
+        OUTPUT = 'e = ' E
+* gcd table
+        G = 0
+        A = 0
+L8      A = A + 1
+        B = 0
+L9      B = B + 1
+        P = A
+        Q = B
+L10     EQ(Q, 0)                       :S(L11)
+        R = REMDR(P, Q)
+        P = Q
+        Q = R                          :(L10)
+L11     G = G + P
+        LT(B, 60)                      :S(L9)
+        LT(A, 60)                      :S(L8)
+        OUTPUT = 'gcd sum: ' G
+END

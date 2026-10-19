@@ -1,0 +1,34 @@
+* BENCH recursion: DEFINE'd functions
+        DEFINE('FIB(N)')               :(FIBE)
+FIB     FIB = LT(N, 2) N               :S(RETURN)
+        FIB = FIB(N - 1) + FIB(N - 2)  :(RETURN)
+FIBE    OUTPUT = 'fib(23) = ' FIB(23)
+        DEFINE('ACK(M,N)')             :(ACKE)
+ACK     ACK = EQ(M, 0) N + 1           :S(RETURN)
+        ACK = EQ(N, 0) ACK(M - 1, 1)   :S(RETURN)
+        ACK = ACK(M - 1, ACK(M, N - 1)) :(RETURN)
+ACKE    OUTPUT = 'ack(2,3) = ' ACK(2, 3)
+        OUTPUT = 'ack(3,3) = ' ACK(3, 3)
+        DEFINE('HANOI(N,A,B,C)')       :(HE)
+HANOI   EQ(N, 0)                       :S(RETURN)
+        HANOI(N - 1, A, C, B)
+        MOVES = MOVES + 1
+        HANOI(N - 1, C, B, A)          :(RETURN)
+HE      HANOI(15, 'A', 'B', 'C')
+        OUTPUT = 'hanoi(15) moves: ' MOVES
+        DEFINE('SUMTO(N)')             :(SE)
+SUMTO   SUMTO = EQ(N, 0) 0             :S(RETURN)
+        SUMTO = N + SUMTO(N - 1)       :(RETURN)
+SE      OUTPUT = 'sumto(1500) = ' SUMTO(1500)
+        DEFINE('PERM(S,P)C,I')         :(PE)
+PERM    EQ(SIZE(S), 0)                 :F(PERM1)
+        COUNT = COUNT + 1
+        :(RETURN)
+PERM1   I = 0
+PERM2   I = I + 1
+        C = SUBSTR(S, I, 1)
+        PERM(SUBSTR(S, 1, I - 1) SUBSTR(S, I + 1), P C)
+        LT(I, SIZE(S))                 :S(PERM2)F(RETURN)
+PE      PERM('abcdefg', '')
+        OUTPUT = 'permutations of 7: ' COUNT
+END

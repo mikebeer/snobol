@@ -1,0 +1,50 @@
+* BENCH tables: inserts, lookups, updates
+        T = TABLE()
+        I = 0
+L1      I = I + 1
+        T<'key' I> = I * 3
+        LT(I, 20000)                    :S(L1)
+        S = 0
+        J = 0
+L2      J = J + 1
+        S = S + T<'key' J>
+        LT(J, 20000)                    :S(L2)
+        OUTPUT = 'sum of values: ' S
+* counting words of a generated text
+        C = TABLE()
+        K = 0
+L3      K = K + 1
+        W = 'w' REMDR(K * 7919, 211)
+        C<W> = C<W> + 1
+        LT(K, 60000)                   :S(L3)
+        OUTPUT = 'distinct: ' PROTOTYPE(C)
+        OUTPUT = 'w0: ' C<'w0'> ' w100: ' C<'w100'> ' w210: ' C<'w210'>
+        A = SORT(C)
+        OUTPUT = 'first key: ' A<1,1> ' ' A<1,2>
+        M = 0
+        N = 0
+L4      N = N + 1
+        GT(A<N,2>, M)                  :F(L5)
+        M = A<N,2>
+L5      LT(N, 211)                     :S(L4)
+        OUTPUT = 'max count: ' M
+* integer keys and arrays
+        X = TABLE()
+        Y = 0
+L6      Y = Y + 1
+        X<Y> = Y * Y
+        LT(Y, 5000)                    :S(L6)
+        Z = 0
+        Y = 0
+L7      Y = Y + 1
+        Z = Z + X<Y>
+        LT(Y, 5000)                    :S(L7)
+        OUTPUT = 'sum of squares: ' Z
+        V = ARRAY(2000, 0)
+        Y = 0
+L8      Y = Y + 1
+        V<Y> = REMDR(Y * 31, 2003)
+        LT(Y, 2000)                    :S(L8)
+        V = SORT(V)
+        OUTPUT = 'sorted: ' V<1> ' ' V<1000> ' ' V<2000>
+END

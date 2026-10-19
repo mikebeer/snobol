@@ -59,5 +59,26 @@ Errors are fatal and reported on stderr with the statement number, unless
 | `examples/` | sample programs |
 | `tests/` | regression tests: `tests/run_tests.sh` |
 | `docs/` | the manual (Word and PDF) |
+| `c/` | the portable C89 version (see below and `c/README.md`) |
+| `bench/` | benchmark programs, run by both versions: `sh bench/run.sh` |
 
 Rebuild after editing `src/`: `python3 build.py`.
+
+## The C version
+
+`c/` holds a strict C89 port of the interpreter (built for VM/370 as well as
+Unix): the same language, the same error messages, the same output for the
+shared tests in `tests/`.  It starts instantly and runs the benchmark programs
+in `bench/` about 50 times faster than the CREXX version.
+
+```
+cd c && make test           # builds ./snobol and runs ../tests against it
+./snobol program.sno        # -f folds identifiers like the CREXX version
+make strict                 # gcc/clang strict matrix, sanitizers, 32-bit long
+make deck                   # 71-column card images for the VM/370 build
+sh ../bench/run.sh          # benchmarks (also runs the CREXX version if installed)
+```
+
+The few places where the two versions differ (bytes instead of UTF-8 code
+points, two CREXX bugs that the port does not copy) are listed in
+[`c/README.md`](c/README.md).

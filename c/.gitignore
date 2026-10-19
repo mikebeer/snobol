@@ -1,0 +1,7 @@
+/snobol
+/snobol_deck
+/snobol_san
+/snobol_32
+/strict_*
+*.o
+__pycache__/
